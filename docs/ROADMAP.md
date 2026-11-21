@@ -2,7 +2,8 @@
 
 每阶段：读取规范 → 检查工作区/远程 → 阶段分支 → 实现 → 实测 → 文档/审查 →
 Commit/同步/PR/CI → 等待用户验收。不得未经验收进入下一阶段，不自动合并 main。
-Phase 0 与 Phase 01 已验收。Phase 02 首项为[Bilibili 离线输入与分 P 校验](BILIBILI_INPUT.md)。
+Phase 0、Phase 01 及 Phase 02 首项 [Bilibili 离线输入与分 P 校验](BILIBILI_INPUT.md)已验收。
+Phase 02 第二项为[本地文件来源校验](LOCAL_INPUT.md)。
 
 | Phase | 交付边界 | 进入/验收标准 |
 | --- | --- | --- |

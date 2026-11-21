@@ -10,12 +10,13 @@
 使用 `cargo build --locked -p videosift-cli` 构建，运行 `videosift --data-dir <已有私有目录> run`。
 命令、退出码与恢复示例见 [CLI 使用说明](docs/CLI.md)。
 Rust core 支持[Bilibili 离线输入解析与分 P 选择](docs/BILIBILI_INPUT.md)，使用调用方提供的目录校验页号。
+核心库也可[校验选定的本地文件](docs/LOCAL_INPUT.md)，按文件内容生成 BLAKE3 来源标识。
 
 仓库已提供架构边界、安全规范、分阶段验收标准、JSON Schema 草案、JSON-RPC 示例及可执行校验、统一代码与视觉规范，以及不依赖账号凭据的 Phase 0 CI 配置。
 
 Rust core 已提供分阶段缓存和[中文子串检索对照实验](docs/CACHE_SEARCH.md)。
 
-计划实现（Planned）：Bilibili 与本地视频、字幕优先与本地语音识别、关键帧与文字识别、带时间戳证据的知识笔记、Fast/Standard/Deep 模式、Codex CLI 总结、字幕检索接入、原生桌面及实测硬件优化。
+计划实现（Planned）：Bilibili 网络获取与媒体探测、字幕优先与本地语音识别、关键帧与文字识别、带时间戳证据的知识笔记、Fast/Standard/Deep 模式、Codex CLI 总结、字幕检索接入、原生桌面及实测硬件优化。
 
 已提供 Rust core 库的任务状态转换、状态字段序列化、[有界 Mock 调度](docs/SCHEDULER.md)和[进程监管](docs/PROCESS_SUPERVISION.md)。规则和边界见
 [任务状态机](docs/TASK_STATE.md)和 [SQLite 任务存储](docs/STORAGE.md)，构建检查见 [开发说明](CONTRIBUTING.md)。
