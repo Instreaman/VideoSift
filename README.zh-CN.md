@@ -6,11 +6,13 @@
 
 ## 当前状态
 
-**Phase 01 已验收。** 独立 Rust CLI 可运行合成 Worker／Provider 流水线。
-使用 `cargo build --locked -p videosift-cli` 构建，运行 `videosift --data-dir <已有私有目录> run`。
-命令、退出码与恢复示例见 [CLI 使用说明](docs/CLI.md)。
-Rust core 支持[Bilibili 离线输入解析与分 P 选择](docs/BILIBILI_INPUT.md)，使用调用方提供的目录校验页号。
-核心库也可[校验选定的本地文件](docs/LOCAL_INPUT.md)，按文件内容生成 BLAKE3 来源标识。
+**Phase 01 已完成。Phase 02 的前两项来源功能已验收并合并至 `main`。**
+这两项功能均通过 Rust 核心库提供。
+
+- **Bilibili 输入。** 离线解析 BV 号或标准播放页 URL。校验分 P 需要调用方提供分 P 目录。遇到多 P 视频时，须明确选择目标页。[输入规则与分 P 选择](docs/BILIBILI_INPUT.md)
+- **本地文件输入。** 校验调用方在授权目录下选定的非空普通文件，以文件内容的 BLAKE3 摘要作为来源标识。改名或复制后，相同内容保留同一标识。媒体格式与可播放性检查属于后续工作。[文件校验与平台限制](docs/LOCAL_INPUT.md)
+
+独立 Rust CLI 使用 Mock Worker 和 Mock Provider 运行合成任务。首次运行示例演示如何在同一私有数据目录连续运行两次，并查看第二次运行的缓存命中结果。[CLI 使用说明](docs/CLI.md)
 
 仓库已提供架构边界、安全规范、分阶段验收标准、JSON Schema 草案、JSON-RPC 示例及可执行校验、统一代码与视觉规范，以及不依赖账号凭据的 Phase 0 CI 配置。
 

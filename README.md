@@ -7,12 +7,16 @@ an Avalonia desktop client and isolated Python inference workers.
 
 ## Status
 
-**Phase 01 accepted.** The standalone Rust CLI
-runs a synthetic Worker/Provider pipeline. Build with `cargo build --locked -p videosift-cli`
-and run `videosift --data-dir <existing-private-directory> run`. See the
-[command and exit-code reference](docs/CLI.md). The core also supports
-[offline Bilibili input parsing and page selection](docs/BILIBILI_INPUT.md) using a caller-supplied catalog.
-It can [validate a selected local file](docs/LOCAL_INPUT.md) and identify its contents with BLAKE3.
+**Phase 01 is complete. The first two Phase 02 source features have been accepted and merged into `main`.**
+Both are available through the Rust core library.
+
+- **Bilibili input.** Parse a BV identifier or a standard playback URL offline. Page validation requires a
+  caller-supplied catalog. For a multi-page video, the caller must choose a page explicitly. [Input and page selection](docs/BILIBILI_INPUT.md)
+- **Local file input.** Validate a selected, nonempty regular file under a caller-authorized directory.
+  Its BLAKE3 content digest identifies the source across renames and copies. Media format and playability checks are planned. [File validation and platform limits](docs/LOCAL_INPUT.md)
+
+The standalone Rust CLI runs a synthetic task with a Mock Worker and Mock Provider. The first-run example
+shows how to run it twice in the same private data directory and check for cache hits on the second run. [CLI quick start](docs/CLI.md)
 
 Present in this repository:
 
