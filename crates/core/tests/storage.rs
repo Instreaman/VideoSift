@@ -245,7 +245,7 @@ fn newer_version_committed_only_in_wal_survives_read_only_preflight() {
     assert!(result.success());
     let wal = dir.path().join("tasks.sqlite3-wal");
     let main_before = fs::read(&path).unwrap();
-    assert_eq!(&main_before[60..64], &2_i32.to_be_bytes());
+    assert_eq!(&main_before[60..64], &3_i32.to_be_bytes());
     let wal_before = fs::read(&wal).unwrap();
     assert!(wal_before.len() > 32);
     assert!(matches!(
@@ -274,7 +274,7 @@ fn hot_journal_is_checked_using_the_last_committed_version() {
         .unwrap();
         std::process::exit(0);
     }
-    for version in [2, 500] {
+    for version in [3, 500] {
         let dir = tempdir().unwrap();
         let mut store = TaskStore::open(dir.path()).unwrap();
         let task = store.submit().unwrap();

@@ -17,12 +17,13 @@ Present in this repository:
 - Shared JSON Schema drafts, JSON-RPC examples and executable contract checks.
 - Code style, desktop design tokens and a credential-free Phase 0 CI workflow.
 - A Rust core library with tested task lifecycle transitions and shared state serialization.
+- Verified stage caches and a [reproducible Chinese substring-search comparison](docs/CACHE_SEARCH.md).
 
 See [SQLite task storage](docs/STORAGE.md), [process supervision](docs/PROCESS_SUPERVISION.md), [bounded Mock scheduling](docs/SCHEDULER.md), [task state rules](docs/TASK_STATE.md) and [Rust checks](CONTRIBUTING.md).
 
 Planned: Bilibili and local video input; subtitle-first transcription; ASR/OCR;
-timestamped evidence; Fast/Standard/Deep processing; Codex CLI summaries; SQLite
-search and content-addressed caching; native desktop UI; measured acceleration.
+timestamped evidence; Fast/Standard/Deep processing; Codex CLI summaries; integrated
+transcript search; native desktop UI; measured acceleration.
 
 ## Validate Phase 0
 

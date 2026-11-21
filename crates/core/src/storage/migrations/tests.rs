@@ -40,6 +40,40 @@ fn assert_version_one(db: &Connection) {
     assert_eq!(state, TaskState::Running);
 }
 
+#[test]
+fn version_two_upgrade_preserves_task_outputs_and_creates_empty_cache() {
+    let (dir, path, db) = version_one();
+    db.execute_batch(MIGRATIONS[1]).unwrap();
+    db.pragma_update(None, "user_version", 2).unwrap();
+    db.execute_batch(
+        "INSERT INTO processing_task(state, checkpoint, output_ref)
+        VALUES ('succeeded', 'last-step', 'result')",
+    )
+    .unwrap();
+    drop(db);
+    let store = TaskStore::open(dir.path()).unwrap();
+    let task = store.task(1).unwrap();
+    assert_eq!(task.state, TaskState::Succeeded);
+    assert_eq!(task.checkpoint.as_deref(), Some("last-step"));
+    assert_eq!(task.output_ref.as_deref(), Some("result"));
+    let backups = backups(&dir);
+    assert_eq!(backups.len(), 1);
+    let backup = Connection::open(&backups[0]).unwrap();
+    assert_eq!(
+        backup
+            .pragma_query_value(None, "user_version", |r| r.get::<_, i32>(0))
+            .unwrap(),
+        2
+    );
+    let db = Connection::open(path).unwrap();
+    assert_eq!(
+        db.query_row("SELECT count(*) FROM cache_entry", [], |r| r
+            .get::<_, i32>(0))
+            .unwrap(),
+        0
+    );
+}
+
 fn backups(dir: &TempDir) -> Vec<PathBuf> {
     fs::read_dir(dir.path().join("backups"))
         .unwrap()

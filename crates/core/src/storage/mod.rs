@@ -1,6 +1,8 @@
 //! SQLite ownership, schema upgrades and durable task transitions.
 
+pub mod cache;
 mod migrations;
+mod publication;
 
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -34,6 +36,14 @@ pub enum StorageError {
     StaleExecution,
     #[error("Expected a nonempty reference of at most 1024 bytes without control characters")]
     InvalidReference,
+    #[error("Cache artifact is missing or failed integrity verification; regenerate the stage")]
+    CacheIntegrity,
+    #[error("An unfinished task still references different content for this cache key")]
+    CacheInUse,
+    #[error("Cache index committed; obsolete file cleanup needs retry: {0}")]
+    CacheCleanup(#[source] std::io::Error),
+    #[error("Invalid cache identity: {0}")]
+    CacheIdentity(&'static str),
     #[error(transparent)]
     Transition(#[from] TransitionError),
 }
@@ -118,6 +128,7 @@ impl TaskStore {
                 params![next, state],
             )?;
         }
+        cache::recover(&tx, &directory.join("cache"))?;
         tx.commit()?;
         Ok(Self {
             connection,

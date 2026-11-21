@@ -21,7 +21,7 @@ pub(super) fn publish_and_sync(
     temp.persist_noclobber(destination)
         .map_err(|error| error.error)?;
     sync_directory(directory)?;
-    // The backups directory itself may have been created during this attempt.
+    // The destination directory itself may have been created during this attempt.
     sync_directory(parent)
 }
 
