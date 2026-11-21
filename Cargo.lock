@@ -701,6 +701,7 @@ dependencies = [
  "nix",
  "process-wrap",
  "rusqlite",
+ "rustix",
  "serde",
  "serde_json",
  "tempfile",

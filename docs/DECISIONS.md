@@ -122,3 +122,6 @@ Rust core 先校验 BV 或完整播放页输入，再根据调用方的分 P 目
 [cap-fs-ext](https://docs.rs/cap-fs-ext/4.0.3/cap_fs_ext/) 4.0.3 复用跨平台目录句柄和禁止跟随链接的打开语义，
 避免自行维护 Windows 与 Unix 的底层路径解析。两者均可选 MIT、Apache-2.0 或 Apache-2.0 WITH LLVM-exception。
 授权根、稳定性、开销及媒体校验边界见[本地来源说明](LOCAL_INPUT.md)。
+
+Linux 嵌套来源的最终打开直接复用锁文件中的 rustix 1.1.6，在原始根句柄上调用 openat2，同时约束根边界和全部链接组件。
+Windows 在每个中间目录打开后从句柄复核重解析点属性。平台无法保证嵌套打开时拒绝该操作。

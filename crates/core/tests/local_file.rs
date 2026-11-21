@@ -8,7 +8,11 @@ use videosift_core::local_file::{LocalFileError as Error, validate_local_file};
 #[test]
 fn serializes_the_shared_fixture_for_a_readable_non_media_file() {
     let root = tempdir().unwrap();
-    let relative = Path::new("合成 目录").join("private clip.unknown");
+    let relative = if cfg!(any(windows, target_os = "linux")) {
+        Path::new("合成 目录").join("private clip.unknown")
+    } else {
+        Path::new("合成 clip.unknown").to_owned()
+    };
     let absolute = root.path().join(&relative);
     fs::create_dir(absolute.parent().unwrap()).unwrap();
     fs::write(&absolute, b"abc").unwrap();
@@ -82,16 +86,37 @@ fn rejects_links_in_any_component_and_special_files() {
     symlink("regular", root.path().join("inside-link")).unwrap();
     symlink("absent", root.path().join("dangling")).unwrap();
     symlink(outside.path(), root.path().join("outside-link")).unwrap();
-    for input in ["inside-link", "dangling", "outside-link/regular"] {
+    for input in ["inside-link", "dangling"] {
         assert_eq!(
             validate_local_file(root.path(), Path::new(input)),
             Err(Error::Link)
         );
     }
+    let nested_error = if cfg!(target_os = "linux") {
+        Error::Link
+    } else {
+        Error::Access(std::io::ErrorKind::Unsupported)
+    };
+    assert_eq!(
+        validate_local_file(root.path(), Path::new("outside-link/regular")),
+        Err(nested_error)
+    );
     let _socket = UnixListener::bind(root.path().join("socket")).unwrap();
     assert_eq!(
         validate_local_file(root.path(), Path::new("socket")),
         Err(Error::NotRegular)
+    );
+}
+
+#[cfg(all(unix, not(target_os = "linux")))]
+#[test]
+fn denies_nested_inputs_without_a_supported_rooted_open() {
+    let root = tempdir().unwrap();
+    fs::create_dir(root.path().join("clips")).unwrap();
+    fs::write(root.path().join("clips/input"), b"fixture").unwrap();
+    assert_eq!(
+        validate_local_file(root.path(), Path::new("clips/input")),
+        Err(Error::Access(std::io::ErrorKind::Unsupported))
     );
 }
 
