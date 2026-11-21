@@ -100,9 +100,20 @@ pub struct TaskStore {
     startup_cache_cleanup_error: Option<StorageError>,
 }
 
+const MOCK_APPLICATION_ID: i32 = 0x56534D4B; // VSMK
+
 impl TaskStore {
     /// Open an existing private application directory and commit task recovery.
     pub fn open(directory: &Path) -> Result<Self, StorageError> {
+        Self::open_for(directory, migrations::APPLICATION_ID)
+    }
+
+    /// Only recover databases created for the synthetic CLI pipeline.
+    pub fn open_mock(directory: &Path) -> Result<Self, StorageError> {
+        Self::open_for(directory, MOCK_APPLICATION_ID)
+    }
+
+    fn open_for(directory: &Path, application_id: i32) -> Result<Self, StorageError> {
         let directory = directory.canonicalize()?;
         let owner = File::options()
             .read(true)
@@ -117,10 +128,13 @@ impl TaskStore {
         }
         let path = directory.join("tasks.sqlite3");
         if path.try_exists()? {
-            migrations::preflight(&path)?;
+            let version = migrations::preflight(&path, application_id)?;
+            if version == 0 && application_id == MOCK_APPLICATION_ID {
+                return Err(StorageError::ForeignDatabase);
+            }
         }
         let mut connection = Connection::open(&path)?;
-        migrations::migrate(&mut connection, &path)?;
+        migrations::migrate(&mut connection, &path, application_id)?;
         let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         for state in [
             TaskState::Running,

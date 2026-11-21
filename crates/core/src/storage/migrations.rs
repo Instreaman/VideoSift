@@ -10,7 +10,7 @@ use super::publication;
 #[cfg(test)]
 mod tests;
 
-const APPLICATION_ID: i32 = 0x56534654; // VSFT
+pub(super) const APPLICATION_ID: i32 = 0x56534654; // VSFT
 const MIGRATIONS: &[&str] = &[
     "CREATE TABLE processing_task (
         id INTEGER PRIMARY KEY,
@@ -36,7 +36,7 @@ const MIGRATIONS: &[&str] = &[
      ) STRICT;",
 ];
 
-fn checked_version(connection: &Connection) -> Result<i32, StorageError> {
+fn checked_version(connection: &Connection, application_id: i32) -> Result<i32, StorageError> {
     let version: i32 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
     if version > MIGRATIONS.len() as i32 {
         return Err(StorageError::NewerVersion(version));
@@ -51,17 +51,17 @@ fn checked_version(connection: &Connection) -> Result<i32, StorageError> {
         if !empty {
             return Err(StorageError::ForeignDatabase);
         }
-    } else if version <= 0 || application != APPLICATION_ID {
+    } else if version <= 0 || application != application_id {
         return Err(StorageError::ForeignDatabase);
     }
     Ok(version)
 }
 
 /// Read the committed version, including any WAL frames, without opening a writer.
-pub(super) fn preflight(path: &Path) -> Result<(), StorageError> {
+pub(super) fn preflight(path: &Path, application_id: i32) -> Result<i32, StorageError> {
     let mut reader = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
     let tx = reader.transaction_with_behavior(TransactionBehavior::Deferred)?;
-    match checked_version(&tx) {
+    match checked_version(&tx, application_id) {
         // SQLite cannot read a hot rollback journal without replaying it. Under
         // the core owner lock, recover a private copy to identify the committed
         // version before permitting SQLite to touch the original.
@@ -76,29 +76,31 @@ pub(super) fn preflight(path: &Path) -> Result<(), StorageError> {
                 dir.path().join("tasks.sqlite3-journal"),
             )?;
             let snapshot = Connection::open_with_flags(&copy, OpenFlags::SQLITE_OPEN_READ_WRITE)?;
-            checked_version(&snapshot)?;
+            checked_version(&snapshot, application_id)
         }
-        result => {
-            result?;
-        }
+        result => result,
     }
-    Ok(())
 }
 
-pub(super) fn migrate(connection: &mut Connection, path: &Path) -> Result<(), StorageError> {
-    migrate_with_publisher(connection, path, publication::publish)
+pub(super) fn migrate(
+    connection: &mut Connection,
+    path: &Path,
+    application_id: i32,
+) -> Result<(), StorageError> {
+    migrate_with_publisher(connection, path, application_id, publication::publish)
 }
 
 fn migrate_with_publisher(
     connection: &mut Connection,
     path: &Path,
+    application_id: i32,
     publish: impl FnOnce(tempfile::NamedTempFile, &Path) -> std::io::Result<()>,
 ) -> Result<(), StorageError> {
     // If the locked recheck rejects a newer WAL, closing this connection must
     // not checkpoint it either. Restore SQLite's normal policy once admitted.
     connection.set_db_config(SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE, true)?;
     let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    let version = checked_version(&tx)?;
+    let version = checked_version(&tx, application_id)?;
     tx.set_db_config(SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE, false)?;
     if version > 0 && version < MIGRATIONS.len() as i32 {
         // A second connection reads the committed snapshot while this transaction excludes writers.
@@ -111,7 +113,7 @@ fn migrate_with_publisher(
         tx.pragma_update(None, "user_version", index as i32 + 1)?;
     }
     if version == 0 {
-        tx.pragma_update(None, "application_id", APPLICATION_ID)?;
+        tx.pragma_update(None, "application_id", application_id)?;
     }
     tx.commit()?;
     Ok(())

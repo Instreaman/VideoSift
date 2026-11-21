@@ -1,10 +1,10 @@
-use std::io::{self, BufRead, Write};
+use std::io::{self, BufRead, IsTerminal, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use serde_json::{Value, json};
-use videosift_core::mock_run::{MockRun, RunError};
+use videosift_core::mock_run::{MockRun, RunError, StageResult};
 use videosift_core::storage::{StorageError, TaskStore};
 use videosift_core::task::TaskState;
 
@@ -75,7 +75,9 @@ impl From<StorageError> for Failure {
                 "Store is busy; use the foreground process for live control"
             }
             StorageError::NewerVersion(_) => "Task database requires a newer version of VideoSift",
-            StorageError::ForeignDatabase => "Unrecognized task database",
+            StorageError::ForeignDatabase => {
+                "Expected a VideoSift Mock CLI database; use a new private directory"
+            }
             StorageError::CacheIntegrity => "Cache artifact failed integrity verification",
             _ => "Could not access the task store or cache; check the private directory and disk",
         };
@@ -139,6 +141,40 @@ fn continue_run(input: impl BufRead) -> Result<bool, Failure> {
     }
 }
 
+fn foreground_decision() -> Result<bool, Failure> {
+    if io::stdin().is_terminal() {
+        return continue_run(io::stdin().lock());
+    }
+    // This one-shot reader owns only stdin. Process exit releases a blocked pipe read.
+    let (send, recv) = std::sync::mpsc::sync_channel(1);
+    std::thread::Builder::new().spawn(move || {
+        let _ = send.send(continue_run(io::stdin().lock()));
+    })?;
+    match recv.recv_timeout(std::time::Duration::from_secs(5)) {
+        Ok(decision) => decision,
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err(Failure {
+            code: "cancellation",
+            message: "Pipe input timed out at the Worker checkpoint",
+            recoverable: false,
+            exit: 4,
+        }),
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            Err(io::Error::other("Input reader stopped").into())
+        }
+    }
+}
+
+fn report_cache_result(task: i64, stage: &str, result: StageResult) -> bool {
+    if result == StageResult::CleanupPending {
+        eprintln!(
+            "{}",
+            json!({"event":"warning", "code":"storage", "task_id":task.to_string(),
+            "stage":stage, "message":"Cache repair committed; obsolete file cleanup needs retry"})
+        );
+    }
+    result == StageResult::CacheHit
+}
+
 fn execute(cli: Cli, id: &mut Option<i64>) -> Result<u8, Failure> {
     *id = match &cli.command {
         Command::Run { .. } => None,
@@ -149,7 +185,7 @@ fn execute(cli: Cli, id: &mut Option<i64>) -> Result<u8, Failure> {
     if id.is_some_and(|n| n < 1) {
         return Err(Failure::validation("Expected a positive task ID"));
     }
-    let mut store = TaskStore::open(&cli.data_dir)?;
+    let mut store = TaskStore::open_mock(&cli.data_dir)?;
     if store.startup_cache_cleanup_error().is_some() {
         eprintln!(
             r#"{{"event":"warning","code":"storage","message":"Orphan cache cleanup needs retry"}}"#
@@ -179,10 +215,10 @@ fn execute(cli: Cli, id: &mut Option<i64>) -> Result<u8, Failure> {
     let run = MockRun::start(&mut store, task)?;
     emit(
         json!({"event": "worker_checkpoint", "task_id": task.to_string(), "state": TaskState::Running,
-        "cache_hit": run.worker_cache_hit}),
+        "cache_hit": report_cache_result(task, "worker", run.worker_result)}),
     )?;
     if interactive {
-        match continue_run(io::stdin().lock()) {
+        match foreground_decision() {
             Ok(true) => {}
             decision => {
                 run.cancel()?;
@@ -192,8 +228,10 @@ fn execute(cli: Cli, id: &mut Option<i64>) -> Result<u8, Failure> {
             }
         }
     }
-    let hit = run.complete()?;
-    emit(json!({"event": "provider_completed", "task_id": task.to_string(), "cache_hit": hit}))?;
+    let result = run.complete()?;
+    emit(
+        json!({"event": "provider_completed", "task_id": task.to_string(), "cache_hit": report_cache_result(task, "provider", result)}),
+    )?;
     status(&store, task)?;
     Ok(0)
 }

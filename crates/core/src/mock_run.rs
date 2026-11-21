@@ -47,26 +47,37 @@ fn dispatch(scheduler: &mut Scheduler, step: Step) -> Result<Execution, Schedule
     Ok(execution)
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StageResult {
+    CacheHit,
+    Generated,
+    CleanupPending,
+}
+
 /// Only invoke the Mock endpoint on a miss or a verified integrity failure.
 fn stage_output(
     store: &mut TaskStore,
     key: &CacheKey,
     task: i64,
     generate: impl FnOnce() -> Result<Vec<u8>, SchedulerError>,
-) -> Result<(CachedArtifact, bool), RunError> {
+) -> Result<(CachedArtifact, StageResult), RunError> {
     match store.cache_get(key, Some(task)) {
-        Ok(Some(hit)) => Ok((hit, true)),
+        Ok(Some(hit)) => Ok((hit, StageResult::CacheHit)),
         Ok(None) => {
             let bytes = generate()?;
             let identity = store.cache_put(key, &bytes, Some(task))?;
-            Ok((CachedArtifact { identity, bytes }, false))
+            Ok((CachedArtifact { identity, bytes }, StageResult::Generated))
         }
         Err(StorageError::CacheIntegrity) => {
-            store.repair_cache(key, &generate()?)?;
+            let result = match store.repair_cache(key, &generate()?) {
+                Ok(_) => StageResult::Generated,
+                Err(StorageError::CacheCleanup(_)) => StageResult::CleanupPending,
+                Err(err) => return Err(err.into()),
+            };
             let repaired = store
                 .cache_get(key, Some(task))?
                 .ok_or(StorageError::CacheIntegrity)?;
-            Ok((repaired, false))
+            Ok((repaired, result))
         }
         Err(err) => Err(err.into()),
     }
@@ -82,7 +93,7 @@ pub struct MockRun<'a> {
     worker_key: CacheKey,
     worker_identity: ArtifactIdentity,
     transcript: Vec<u8>,
-    pub worker_cache_hit: bool,
+    pub worker_result: StageResult,
 }
 
 impl<'a> MockRun<'a> {
@@ -93,11 +104,11 @@ impl<'a> MockRun<'a> {
         let execution = dispatch(&mut scheduler, Step::Worker)?;
         let ticket = store.dispatch(task)?;
         let worker_key = stage_key(Stage::Subtitle, None)?;
-        let (artifact, worker_cache_hit) = stage_output(store, &worker_key, task, || {
+        let (artifact, worker_result) = stage_output(store, &worker_key, task, || {
             MockWorker::finish(&mut scheduler, execution, Outcome::Success)?;
             Ok(FIXTURE.as_bytes().to_vec())
         })?;
-        if worker_cache_hit {
+        if worker_result == StageResult::CacheHit {
             scheduler.deliver(execution, Outcome::Success)?;
         }
         store.save_checkpoint(&ticket, worker_key.as_str())?;
@@ -110,7 +121,7 @@ impl<'a> MockRun<'a> {
             worker_key,
             worker_identity: artifact.identity,
             transcript: artifact.bytes,
-            worker_cache_hit,
+            worker_result,
         })
     }
 
@@ -122,21 +133,21 @@ impl<'a> MockRun<'a> {
         Ok(())
     }
 
-    /// Return whether the validated summary came from cache.
-    pub fn complete(mut self) -> Result<bool, RunError> {
+    /// Publish the verified summary and report cache maintenance still pending.
+    pub fn complete(mut self) -> Result<StageResult, RunError> {
         let execution = dispatch(&mut self.scheduler, Step::Provider)?;
         let key = stage_key(Stage::Summary, Some(self.worker_identity))?;
-        let (_, hit) = stage_output(self.store, &key, self.task, || {
+        let (_, result) = stage_output(self.store, &key, self.task, || {
             let mut summary = b"Mock summary: ".to_vec();
             summary.extend_from_slice(&self.transcript);
             MockProvider::finish(&mut self.scheduler, execution, Outcome::Success)?;
             Ok(summary)
         })?;
-        if hit {
+        if result == StageResult::CacheHit {
             self.scheduler.deliver(execution, Outcome::Success)?;
         }
         self.store
             .complete(&self.ticket, self.worker_key.as_str(), key.as_str())?;
-        Ok(hit)
+        Ok(result)
     }
 }
