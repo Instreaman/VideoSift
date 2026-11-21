@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
+use std::fmt;
 
 use serde::Serialize;
-use serde_json::Value;
+use serde::de::{Error as _, MapAccess, Visitor};
+use serde_json::{Value, value::RawValue};
 
 use super::StorageError;
 
@@ -50,12 +52,66 @@ pub struct StageIdentity<'a> {
     pub dependencies: BTreeMap<&'a str, ArtifactIdentity>,
 }
 
-fn finite_numbers(value: &Value) -> bool {
-    match value {
-        Value::Number(number) => number.as_f64().is_some_and(f64::is_finite),
-        Value::Array(items) => items.iter().all(finite_numbers),
-        Value::Object(fields) => fields.values().all(finite_numbers),
-        _ => true,
+fn unique_fields(input: &str) -> Result<BTreeMap<String, &RawValue>, serde_json::Error> {
+    struct Fields;
+
+    impl<'de> Visitor<'de> for Fields {
+        type Value = BTreeMap<String, &'de RawValue>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter.write_str("a JSON object with unique keys")
+        }
+
+        fn visit_map<M: MapAccess<'de>>(self, mut map: M) -> Result<Self::Value, M::Error> {
+            let mut fields = BTreeMap::new();
+            while let Some((name, value)) = map.next_entry()? {
+                if fields.insert(name, value).is_some() {
+                    return Err(M::Error::custom("duplicate object key"));
+                }
+            }
+            Ok(fields)
+        }
+    }
+
+    let mut decoder = serde_json::Deserializer::from_str(input);
+    let fields = serde::Deserializer::deserialize_map(&mut decoder, Fields)?;
+    decoder.end()?;
+    Ok(fields)
+}
+
+// Read objects by their JSON syntax before Value sees them. With arbitrary_precision,
+// Value can otherwise interpret an object beginning with its private numeric key as a number.
+fn parameter_value(input: &str, depth: usize) -> Result<Value, StorageError> {
+    if depth == 128 {
+        return Err(StorageError::CacheIdentity(
+            "inference parameters nested too deeply",
+        ));
+    }
+    let invalid = |_: serde_json::Error| StorageError::CacheIdentity("invalid JSON parameters");
+    match input.as_bytes().first() {
+        Some(b'{') => unique_fields(input)
+            .map_err(|_| StorageError::CacheIdentity("invalid JSON object or duplicate key"))?
+            .into_iter()
+            .map(|(key, value)| Ok((key, parameter_value(value.get(), depth + 1)?)))
+            .collect::<Result<_, _>>()
+            .map(Value::Object),
+        Some(b'[') => serde_json::from_str::<Vec<&RawValue>>(input)
+            .map_err(invalid)?
+            .into_iter()
+            .map(|value| parameter_value(value.get(), depth + 1))
+            .collect::<Result<_, _>>()
+            .map(Value::Array),
+        _ => {
+            let value = serde_json::from_str::<Value>(input).map_err(invalid)?;
+            if let Value::Number(number) = &value
+                && !number.as_f64().is_some_and(f64::is_finite)
+            {
+                return Err(StorageError::CacheIdentity(
+                    "non-finite inference parameter",
+                ));
+            }
+            Ok(value)
+        }
     }
 }
 
@@ -83,19 +139,15 @@ impl StageIdentity<'_> {
                 "missing stage or content version information",
             ));
         }
-        let params: Value = serde_json::from_str(inference_params)
-            .map_err(|_| StorageError::CacheIdentity("invalid JSON parameters"))?;
-        if !params.is_object() {
+        let params = inference_params.trim_matches([' ', '\t', '\r', '\n']);
+        if !params.starts_with('{') {
             return Err(StorageError::CacheIdentity("expected a JSON object"));
-        }
-        if !finite_numbers(&params) {
-            return Err(StorageError::CacheIdentity(
-                "non-finite inference parameter",
-            ));
         }
         let mut value = serde_json::to_value(self)
             .map_err(|_| StorageError::CacheIdentity("invalid stage identity"))?;
-        value["inference_params"] = params;
+        value["inference_params"] = parameter_value(params, 0)?;
+        // Keep results hashed by the ambiguous legacy parser outside this namespace.
+        value["key_version"] = Value::from(2);
         value.sort_all_objects();
         serde_json::to_vec(&value)
             .map_err(|_| StorageError::CacheIdentity("invalid stage identity"))

@@ -17,7 +17,7 @@ test = true
 
 [dependencies]
 serde.workspace = true
-serde_json = { workspace = true, features = ["arbitrary_precision"] }
+serde_json = { workspace = true, features = ["arbitrary_precision", "raw_value"] }
 tokio.workspace = true
 process-wrap.workspace = true
 rusqlite = { version = "0.43.0", default-features = false, features = ["bundled", "backup"] }

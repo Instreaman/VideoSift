@@ -29,6 +29,7 @@ const DOCS: &[&str] = &[
     "排列数据与事务无关。",
     "字节和符号可以共存。",
     "独立的 SQLite3 工具。",
+    "温度 ΔX。引用 ΔX!",
 ];
 
 struct Query(&'static str, &'static str, &'static [usize]);
@@ -55,6 +56,10 @@ const QUERIES: &[Query] = &[
     Query("punct", "、逗号，", &[15]),
     Query("punct", "\" OR *", &[]),
     Query("punct", "' OR 1=1 --", &[]),
+    Query("case", "Δx", &[24]),
+    Query("case", "δx", &[]),
+    Query("case", "Δx!", &[24]),
+    Query("case", "δx!", &[]),
 ];
 
 #[derive(Clone, Copy, Debug)]
@@ -154,7 +159,7 @@ fn build(db: &mut Connection, method: Method) -> rusqlite::Result<()> {
     let tx = db.transaction()?;
     tx.execute_batch(match method {
         Method::Trigram => {
-            "CREATE VIRTUAL TABLE search USING fts5(tokens, content='', tokenize='trigram')"
+            "CREATE VIRTUAL TABLE search USING fts5(tokens, content='', tokenize='trigram case_sensitive 1')"
         }
         _ => "CREATE VIRTUAL TABLE search USING fts5(tokens, content='', tokenize='ascii')",
     })?;

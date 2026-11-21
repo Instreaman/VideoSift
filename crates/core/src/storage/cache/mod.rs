@@ -68,8 +68,104 @@ pub(super) fn recover(db: &Connection, directory: &Path) -> Result<(), StorageEr
             false
         };
         if staged || orphan {
-            fs::remove_file(entry.path())?;
+            remove_file_if_present(&entry.path())?;
         }
+    }
+    Ok(())
+}
+
+fn remove_file_if_present(path: &Path) -> io::Result<()> {
+    match fs::remove_file(path) {
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+        result => result,
+    }
+}
+
+struct IndexedArtifact {
+    id: [u8; 32],
+    digest: blake3::Hash,
+    length: u64,
+}
+
+fn indexed_artifact(
+    db: &Connection,
+    key: &CacheKey,
+) -> Result<Option<IndexedArtifact>, StorageError> {
+    Ok(db
+        .query_row(
+            "SELECT object_id, digest, byte_length FROM cache_entry WHERE cache_key=?1",
+            [key.as_str()],
+            |row| {
+                Ok(IndexedArtifact {
+                    id: row.get(0)?,
+                    digest: blake3::Hash::from_bytes(row.get(1)?),
+                    length: row.get::<_, i64>(2)? as u64,
+                })
+            },
+        )
+        .optional()?)
+}
+
+impl IndexedArtifact {
+    fn read_verified(&self, directory: &Path) -> Result<Vec<u8>, StorageError> {
+        if !directory_exists(directory)? {
+            return Err(StorageError::CacheIntegrity);
+        }
+        let path = object_path(directory, self.id);
+        let file_error = |e: io::Error| {
+            if e.kind() == io::ErrorKind::NotFound {
+                StorageError::CacheIntegrity
+            } else {
+                e.into()
+            }
+        };
+        let metadata = fs::symlink_metadata(&path).map_err(file_error)?;
+        if !metadata.is_file() || is_link(&metadata) || metadata.len() != self.length {
+            return Err(StorageError::CacheIntegrity);
+        }
+        let mut bytes = Vec::new();
+        fs::File::open(path)
+            .map_err(file_error)?
+            .take(self.length + 1)
+            .read_to_end(&mut bytes)?;
+        if bytes.len() as u64 != self.length || blake3::hash(&bytes) != self.digest {
+            return Err(StorageError::CacheIntegrity);
+        }
+        Ok(bytes)
+    }
+}
+
+fn prepare_repair(
+    db: &Connection,
+    directory: &Path,
+    key: &CacheKey,
+    old: Option<&IndexedArtifact>,
+    digest: blake3::Hash,
+) -> Result<(), StorageError> {
+    let old = old.ok_or(StorageError::CacheRepairNotNeeded)?;
+    match old.read_verified(directory) {
+        Err(StorageError::CacheIntegrity) => {}
+        Ok(_) => return Err(StorageError::CacheRepairNotNeeded),
+        Err(error) => return Err(error),
+    }
+
+    if old.digest != digest {
+        let executing: bool = db.query_row(
+            "SELECT EXISTS(SELECT 1 FROM processing_task t JOIN cache_reference r
+             ON t.id=r.task_id WHERE r.cache_key=?1 AND t.execution IS NOT NULL)",
+            [key.as_str()],
+            |row| row.get(0),
+        )?;
+        if executing {
+            return Err(StorageError::CacheRepairBusy);
+        }
+        // Checkpoints are opaque. Restart affected unfinished tasks from their first step.
+        db.execute(
+            "UPDATE processing_task SET checkpoint=NULL WHERE id IN
+             (SELECT task_id FROM cache_reference WHERE cache_key=?1)
+             AND state NOT IN ('succeeded','failed','cancelled')",
+            [key.as_str()],
+        )?;
     }
     Ok(())
 }
@@ -108,20 +204,45 @@ impl TaskStore {
         bytes: &[u8],
         task: Option<i64>,
     ) -> Result<ArtifactIdentity, StorageError> {
+        self.publish_cache(key, bytes, task, false)
+    }
+
+    /// Rebuild an indexed artifact after verifying the previous generation is damaged.
+    /// A changed digest requires settled executions and invalidates referencing checkpoints
+    /// in the publication transaction. Task references remain attached to the stage key.
+    pub fn repair_cache(
+        &mut self,
+        key: &CacheKey,
+        bytes: &[u8],
+    ) -> Result<ArtifactIdentity, StorageError> {
+        self.publish_cache(key, bytes, None, true)
+    }
+
+    fn publish_cache(
+        &mut self,
+        key: &CacheKey,
+        bytes: &[u8],
+        task: Option<i64>,
+        repair: bool,
+    ) -> Result<ArtifactIdentity, StorageError> {
         let directory = self.path.with_file_name("cache");
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let digest = blake3::hash(bytes);
-        let in_use: bool = tx.query_row(
-            "SELECT EXISTS(SELECT 1 FROM cache_entry e JOIN cache_reference r USING(cache_key)
-             JOIN processing_task t ON t.id=r.task_id WHERE e.cache_key=?1 AND e.digest<>?2
-             AND t.state NOT IN ('succeeded','failed','cancelled'))",
-            params![key.as_str(), digest.as_bytes()],
-            |r| r.get(0),
-        )?;
-        if in_use {
-            return Err(StorageError::CacheInUse);
+        let old = indexed_artifact(&tx, key)?;
+        if repair {
+            prepare_repair(&tx, &directory, key, old.as_ref(), digest)?;
+        } else if old.as_ref().is_some_and(|entry| entry.digest != digest) {
+            let in_use: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM cache_reference r JOIN processing_task t ON t.id=r.task_id
+                 WHERE r.cache_key=?1 AND t.state NOT IN ('succeeded','failed','cancelled'))",
+                [key.as_str()],
+                |row| row.get(0),
+            )?;
+            if in_use {
+                return Err(StorageError::CacheInUse);
+            }
         }
         pin(&tx, key, task)?;
         if !directory_exists(&directory)? {
@@ -140,13 +261,6 @@ impl TaskStore {
         if temp.as_file().metadata()?.len() != bytes.len() as u64 || digest != staged {
             return Err(StorageError::CacheIntegrity);
         }
-        let old: Option<[u8; 32]> = tx
-            .query_row(
-                "SELECT object_id FROM cache_entry WHERE cache_key=?1",
-                [key.as_str()],
-                |r| r.get(0),
-            )
-            .optional()?;
         let id: [u8; 32] = tx.query_row("SELECT randomblob(32)", [], |r| r.get(0))?;
         publication::publish(temp, &object_path(&directory, id))?;
         tx.execute(
@@ -164,13 +278,9 @@ impl TaskStore {
         )?;
         tx.commit()?;
         // IDs are unique per publication. Recovery may have collected this generation already.
-        if let Some(id) = old {
-            match fs::remove_file(object_path(&directory, id)) {
-                Err(e) if e.kind() != io::ErrorKind::NotFound => {
-                    return Err(StorageError::CacheCleanup(e));
-                }
-                _ => {}
-            }
+        if let Some(old) = old {
+            remove_file_if_present(&object_path(&directory, old.id))
+                .map_err(StorageError::CacheCleanup)?;
         }
         Ok(artifact(key, digest))
     }
@@ -185,46 +295,10 @@ impl TaskStore {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let entry = tx
-            .query_row(
-                "SELECT object_id, digest, byte_length FROM cache_entry WHERE cache_key=?1",
-                [key.as_str()],
-                |r| {
-                    Ok((
-                        r.get::<_, [u8; 32]>(0)?,
-                        r.get::<_, [u8; 32]>(1)?,
-                        r.get::<_, i64>(2)? as u64,
-                    ))
-                },
-            )
-            .optional()?;
-        let Some((id, digest, length)) = entry else {
+        let Some(entry) = indexed_artifact(&tx, key)? else {
             return Ok(None);
         };
-        if !directory_exists(&directory)? {
-            return Err(StorageError::CacheIntegrity);
-        }
-        let path = object_path(&directory, id);
-        let file_error = |e: io::Error| {
-            if e.kind() == io::ErrorKind::NotFound {
-                StorageError::CacheIntegrity
-            } else {
-                e.into()
-            }
-        };
-        let metadata = fs::symlink_metadata(&path).map_err(file_error)?;
-        if !metadata.is_file() || is_link(&metadata) || metadata.len() != length {
-            return Err(StorageError::CacheIntegrity);
-        }
-        let mut bytes = Vec::new();
-        fs::File::open(path)
-            .map_err(file_error)?
-            .take(length + 1)
-            .read_to_end(&mut bytes)?;
-        let hash = blake3::hash(&bytes);
-        if bytes.len() as u64 != length || hash.as_bytes() != &digest {
-            return Err(StorageError::CacheIntegrity);
-        }
+        let bytes = entry.read_verified(&directory)?;
         pin(&tx, key, task)?;
         tx.execute(
             "UPDATE cache_entry SET last_used=?1 WHERE cache_key=?2",
@@ -232,7 +306,7 @@ impl TaskStore {
         )?;
         tx.commit()?;
         Ok(Some(CachedArtifact {
-            identity: artifact(key, hash),
+            identity: artifact(key, entry.digest),
             bytes,
         }))
     }
@@ -240,7 +314,6 @@ impl TaskStore {
     /// Evict least-recently-used unprotected entries. Return remaining indexed payload bytes,
     /// which can exceed the budget when unfinished tasks still reference artifacts.
     pub fn trim_cache(&mut self, budget: u64) -> Result<u64, StorageError> {
-        let directory = self.path.with_file_name("cache");
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -269,11 +342,19 @@ impl TaskStore {
             size -= length as u64;
         }
         tx.commit()?;
+        self.cleanup_cache()?;
+        Ok(size)
+    }
+
+    /// Retry orphan cleanup under the SQLite writer lock.
+    pub fn cleanup_cache(&mut self) -> Result<(), StorageError> {
+        let directory = self.path.with_file_name("cache");
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         recover(&tx, &directory)?;
         tx.commit()?;
-        Ok(size)
+        self.startup_cache_cleanup_error = None;
+        Ok(())
     }
 }
