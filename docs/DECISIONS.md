@@ -108,3 +108,9 @@
   [CLI 说明](CLI.md)列出退出码、合成输入及验收方法。
 
 Mock CLI 库通过独立 SQLite application_id 识别。标准输入来自管道时限时 5 秒，超时在 Worker 边界取消并释放所有权。
+
+## ADR-013：离线解析与目录校验
+
+Rust core 先校验 BV 或完整播放页输入，再根据调用方的分 P 目录生成 VideoSource。
+缺少目录和多 P 待选择分别建模。BiliSum 仅作行为对照，本子任务复用已有 Serde 与 thiserror。
+核对版本、许可证、差异和输入边界见[Bilibili 离线输入](BILIBILI_INPUT.md)。

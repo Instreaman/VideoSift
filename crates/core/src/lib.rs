@@ -1,5 +1,6 @@
 //! Task lifecycle rules owned by the VideoSift core.
 
+pub mod bilibili;
 pub mod task;
 
 pub mod mock;
