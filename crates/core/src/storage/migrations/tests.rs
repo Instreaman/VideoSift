@@ -128,7 +128,7 @@ fn sqlite_full_rolls_back_ddl_and_preserves_pre_upgrade_snapshot_on_retry() {
         .pragma_query_value(None, "page_count", |r| r.get(0))
         .unwrap();
     db.pragma_update(None, "max_page_count", pages).unwrap();
-    let error = migrate(&mut db, &path).unwrap_err();
+    let error = migrate(&mut db, &path, APPLICATION_ID).unwrap_err();
     assert!(
         matches!(error, StorageError::Database(ref e) if e.sqlite_error_code() == Some(ErrorCode::DiskFull)),
         "{error}"
@@ -151,7 +151,10 @@ fn backup_destination_failure_prevents_any_schema_change() {
     db.execute("INSERT INTO processing_task(state) VALUES ('running')", [])
         .unwrap();
     fs::write(dir.path().join("backups"), b"occupied").unwrap();
-    assert!(matches!(migrate(&mut db, &path), Err(StorageError::Io(_))));
+    assert!(matches!(
+        migrate(&mut db, &path, APPLICATION_ID),
+        Err(StorageError::Io(_))
+    ));
     assert_version_one(&db);
 }
 
@@ -160,7 +163,7 @@ fn publication_collision_preserves_both_old_database_and_existing_backup() {
     let (dir, path, mut db) = version_one();
     db.execute("INSERT INTO processing_task(state) VALUES ('running')", [])
         .unwrap();
-    let error = migrate_with_publisher(&mut db, &path, |temp, destination| {
+    let error = migrate_with_publisher(&mut db, &path, APPLICATION_ID, |temp, destination| {
         fs::write(destination, b"reserved filename")?;
         publication::publish(temp, destination)
     })
@@ -170,7 +173,7 @@ fn publication_collision_preserves_both_old_database_and_existing_backup() {
     let files = backups(&dir);
     assert_eq!(files.len(), 1);
     assert_eq!(fs::read(&files[0]).unwrap(), b"reserved filename");
-    migrate(&mut db, &path).unwrap();
+    migrate(&mut db, &path, APPLICATION_ID).unwrap();
     assert_eq!(backups(&dir).len(), 2);
     assert_eq!(fs::read(&files[0]).unwrap(), b"reserved filename");
 }
@@ -182,7 +185,7 @@ fn directory_sync_failures_after_publication_block_the_upgrade() {
         let (dir, path, mut db) = version_one();
         db.execute("INSERT INTO processing_task(state) VALUES ('running')", [])
             .unwrap();
-        let error = migrate_with_publisher(&mut db, &path, |temp, destination| {
+        let error = migrate_with_publisher(&mut db, &path, APPLICATION_ID, |temp, destination| {
             publication::publish_and_sync(temp, destination, |directory| {
                 assert!(destination.is_file());
                 if (directory == dir.path()) == fail_on_parent {
@@ -197,7 +200,7 @@ fn directory_sync_failures_after_publication_block_the_upgrade() {
         let files = backups(&dir);
         assert_eq!(files.len(), 1);
         assert_version_one(&Connection::open(&files[0]).unwrap());
-        migrate(&mut db, &path).unwrap();
+        migrate(&mut db, &path, APPLICATION_ID).unwrap();
         assert_eq!(backups(&dir).len(), 2);
     }
 }
@@ -205,7 +208,7 @@ fn directory_sync_failures_after_publication_block_the_upgrade() {
 #[test]
 fn write_transaction_rechecks_version_after_successful_preflight() {
     let (dir, path, mut db) = version_one();
-    preflight(&path).unwrap();
+    preflight(&path, APPLICATION_ID).unwrap();
     db.execute_batch("PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0;")
         .unwrap();
     db.pragma_update(None, "user_version", 500).unwrap();
@@ -213,7 +216,7 @@ fn write_transaction_rechecks_version_after_successful_preflight() {
     let wal = dir.path().join("tasks.sqlite3-wal");
     let frames = fs::read(&wal).unwrap();
     assert!(matches!(
-        migrate(&mut db, &path),
+        migrate(&mut db, &path, APPLICATION_ID),
         Err(StorageError::NewerVersion(500))
     ));
     assert!(!dir.path().join("backups").exists());

@@ -7,9 +7,10 @@ an Avalonia desktop client and isolated Python inference workers.
 
 ## Status
 
-**Phase 01 SQLite task storage and restart recovery accepted.**
-There is no runnable application, video adapter, AI worker or desktop GUI yet.
-No performance target has been measured. No release or installer is available.
+**Phase 01 cache and Chinese search baseline accepted.** The standalone Rust CLI
+runs a synthetic Worker/Provider pipeline. Build with `cargo build --locked -p videosift-cli`
+and run `videosift --data-dir <existing-private-directory> run`. See the
+[command and exit-code reference](docs/CLI.md). Video input, inference and the GUI are planned.
 
 Present in this repository:
 

@@ -6,7 +6,9 @@
 
 ## 当前状态
 
-**Phase 01 SQLite 事务、迁移与重启恢复已验收。** 尚无可运行的应用、视频适配器、AI Worker 或 GUI；没有发布安装包，性能目标尚未测量。
+**Phase 01 缓存一致性与中文检索基线已验收。** 独立 Rust CLI 可运行合成 Worker／Provider 流水线。
+使用 `cargo build --locked -p videosift-cli` 构建，运行 `videosift --data-dir <已有私有目录> run`。
+命令、退出码与恢复示例见 [CLI 使用说明](docs/CLI.md)。
 
 仓库已提供架构边界、安全规范、分阶段验收标准、JSON Schema 草案、JSON-RPC 示例及可执行校验、统一代码与视觉规范，以及不依赖账号凭据的 Phase 0 CI 配置。
 

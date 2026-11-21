@@ -97,3 +97,14 @@
 - 中文字面子串检索以 SQLite 内置 FTS5 trigram 配合短词扫描作后续对照基线。它在本次语料中达到完整召回，
   索引比 bigram 小一页。高频短词查询需保留 bigram 作速度对照。生产字幕索引和排序另行验收。
 - 合成语料、测量口径、限制及复跑入口见[缓存与中文检索](CACHE_SEARCH.md)。
+
+## ADR-012：单所有者的前台 Mock CLI
+
+- 独立的 videosift-cli 使用 [Clap](https://github.com/clap-rs/clap) 解析命令，锁定 4.6.9
+  （MIT 或 Apache-2.0，最低 Rust 1.85）。core 组合原有调度、执行票据、事务和缓存接口。
+- 一次前台运行持有一个任务库。交互模式在已提交的 Worker 检查点通过 stdin 接受取消；
+  重启时由原有存储恢复所有权，使用原任务编号显式恢复。
+- stdout 的 JSONL 用于本地命令结果；后台服务、GUI 连接和跨语言 RPC 保持各自的阶段边界。
+  [CLI 说明](CLI.md)列出退出码、合成输入及验收方法。
+
+Mock CLI 库通过独立 SQLite application_id 识别。标准输入来自管道时限时 5 秒，超时在 Worker 边界取消并释放所有权。
