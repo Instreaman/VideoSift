@@ -12,6 +12,7 @@ runs a synthetic Worker/Provider pipeline. Build with `cargo build --locked -p v
 and run `videosift --data-dir <existing-private-directory> run`. See the
 [command and exit-code reference](docs/CLI.md). The core also supports
 [offline Bilibili input parsing and page selection](docs/BILIBILI_INPUT.md) using a caller-supplied catalog.
+It can [validate a selected local file](docs/LOCAL_INPUT.md) and identify its contents with BLAKE3.
 
 Present in this repository:
 
@@ -23,7 +24,7 @@ Present in this repository:
 
 See [SQLite task storage](docs/STORAGE.md), [process supervision](docs/PROCESS_SUPERVISION.md), [bounded Mock scheduling](docs/SCHEDULER.md), [task state rules](docs/TASK_STATE.md) and [Rust checks](CONTRIBUTING.md).
 
-Planned: Bilibili and local video input; subtitle-first transcription; ASR/OCR;
+Planned: Bilibili retrieval and media inspection; subtitle-first transcription; ASR/OCR;
 timestamped evidence; Fast/Standard/Deep processing; Codex CLI summaries; integrated
 transcript search; native desktop UI; measured acceleration.
 

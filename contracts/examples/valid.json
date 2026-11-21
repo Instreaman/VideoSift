@@ -224,6 +224,21 @@
     }
   },
   {
+    "name": "local_file_digest",
+    "schema": "domain.schema.json",
+    "instance": {
+      "protocol_version": "0.1.0",
+      "video_id": "synthetic_file",
+      "source": {
+        "kind": "local",
+        "source_id": "6437b3ac38465133ffb63b75273a8db548c558465d79db03fd359c6cd5bd9d85",
+        "part_id": null
+      },
+      "title": "合成文件样例",
+      "duration_ms": null
+    }
+  },
+  {
     "name": "bilibili_part",
     "schema": "domain.schema.json",
     "instance": {

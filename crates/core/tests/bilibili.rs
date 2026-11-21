@@ -152,7 +152,7 @@ fn reconciles_explicit_choices_and_matches_the_shared_fixture() {
             panic!("resolved source expected")
         };
         assert_eq!(
-            serde_json::to_value(source).unwrap(),
+            serde_json::to_value(videosift_core::VideoSource::Bilibili(source)).unwrap(),
             fixture["instance"]["source"]
         );
     }
