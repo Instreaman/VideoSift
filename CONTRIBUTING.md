@@ -70,7 +70,7 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
 ```
 
-Cargo.lock 随应用 workspace 提交。Serde 负责状态值序列化，serde_json 仅用于测试。
+Cargo.lock 随应用 workspace 提交。Serde 负责状态值序列化，serde_json 也用于缓存键的规范化。
 共享契约仍以 contracts 为准，现阶段测试只声明状态字段往返覆盖。
 
 ## 本地开发资料

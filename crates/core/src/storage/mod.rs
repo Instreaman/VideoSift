@@ -1,6 +1,8 @@
 //! SQLite ownership, schema upgrades and durable task transitions.
 
+pub mod cache;
 mod migrations;
+mod publication;
 
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -34,6 +36,18 @@ pub enum StorageError {
     StaleExecution,
     #[error("Expected a nonempty reference of at most 1024 bytes without control characters")]
     InvalidReference,
+    #[error("Cache artifact is missing or failed integrity verification; regenerate the stage")]
+    CacheIntegrity,
+    #[error("An unfinished task still references different content for this cache key")]
+    CacheInUse,
+    #[error("Cache repair requires an indexed artifact that failed integrity checks")]
+    CacheRepairNotNeeded,
+    #[error("Settle live executions referencing the damaged cache artifact before repair")]
+    CacheRepairBusy,
+    #[error("Cache index committed; obsolete file cleanup needs retry: {0}")]
+    CacheCleanup(#[source] std::io::Error),
+    #[error("Invalid cache identity: {0}")]
+    CacheIdentity(&'static str),
     #[error(transparent)]
     Transition(#[from] TransitionError),
 }
@@ -83,10 +97,11 @@ pub struct TaskStore {
     connection: Connection,
     path: PathBuf,
     owner: Arc<File>,
+    startup_cache_cleanup_error: Option<StorageError>,
 }
 
 impl TaskStore {
-    /// Open an existing private application directory. Finish recovery before returning a writer.
+    /// Open an existing private application directory and commit task recovery.
     pub fn open(directory: &Path) -> Result<Self, StorageError> {
         let directory = directory.canonicalize()?;
         let owner = File::options()
@@ -119,11 +134,19 @@ impl TaskStore {
             )?;
         }
         tx.commit()?;
-        Ok(Self {
+        let mut store = Self {
             connection,
             path,
             owner: Arc::new(owner),
-        })
+            startup_cache_cleanup_error: None,
+        };
+        store.startup_cache_cleanup_error = store.cleanup_cache().err();
+        Ok(store)
+    }
+
+    /// The cache cleanup error from opening this store, if cleanup still needs attention.
+    pub fn startup_cache_cleanup_error(&self) -> Option<&StorageError> {
+        self.startup_cache_cleanup_error.as_ref()
     }
 
     /// Independent transaction connection within the same core lifetime. Never runs recovery.
@@ -132,6 +155,7 @@ impl TaskStore {
             connection: Connection::open_with_flags(&self.path, OpenFlags::SQLITE_OPEN_READ_WRITE)?,
             path: self.path.clone(),
             owner: Arc::clone(&self.owner),
+            startup_cache_cleanup_error: None,
         })
     }
 

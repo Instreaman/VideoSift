@@ -5,7 +5,7 @@ use rusqlite::{Connection, MAIN_DB, OpenFlags, TransactionBehavior, backup::NO_P
 
 use super::StorageError;
 
-mod publication;
+use super::publication;
 
 #[cfg(test)]
 mod tests;
@@ -21,6 +21,19 @@ const MIGRATIONS: &[&str] = &[
      ALTER TABLE processing_task ADD COLUMN output_ref TEXT;
      CREATE UNIQUE INDEX active_execution ON processing_task(execution)
          WHERE execution IS NOT NULL;",
+    "CREATE TABLE cache_entry (
+        cache_key TEXT PRIMARY KEY,
+        object_id BLOB NOT NULL UNIQUE CHECK(length(object_id) = 32),
+        digest BLOB NOT NULL CHECK(length(digest) = 32),
+        byte_length INTEGER NOT NULL CHECK(byte_length >= 0),
+        last_used INTEGER NOT NULL
+     ) STRICT;
+     CREATE INDEX cache_lru ON cache_entry(last_used);
+     CREATE TABLE cache_reference (
+        task_id INTEGER NOT NULL,
+        cache_key TEXT NOT NULL,
+        PRIMARY KEY(cache_key, task_id)
+     ) STRICT;",
 ];
 
 fn checked_version(connection: &Connection) -> Result<i32, StorageError> {
