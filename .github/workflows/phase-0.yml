@@ -1,0 +1,59 @@
+name: Phase 0 validation
+
+on:
+  push:
+    branches: [main, feat/phase-00-architecture]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase-0-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    name: Contracts and repository (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Install contract validator
+        run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
+      - name: Python lint
+        run: python -m ruff check .
+      - name: Python format
+        run: python -m ruff format --check .
+      - name: Validate repository and contract fixtures
+        run: python scripts/validate_repository.py
+      - name: Test contract rejection and semantic rules
+        run: python -m unittest discover -s tests -v
+      - name: Check whitespace
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            base=$(git merge-base "$PR_BASE" HEAD)
+          elif [ "$EVENT_NAME" = "push" ] && [ "$PUSH_BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            base="$PUSH_BEFORE"
+          else
+            base=$(git hash-object -t tree /dev/null)
+          fi
+          git diff --check "$base" HEAD

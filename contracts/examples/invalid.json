@@ -1,0 +1,776 @@
+[
+  {
+    "name": "version_mismatch",
+    "schema": "rpc.schema.json",
+    "expected_error": "schema",
+    "instance": {
+      "jsonrpc": "2.0",
+      "id": "request_1",
+      "method": "system.handshake",
+      "params": {
+        "protocol_version": "9.0.0",
+        "task_id": null,
+        "client_name": "core",
+        "capabilities": [
+          "inference.transcribe"
+        ]
+      }
+    }
+  },
+  {
+    "name": "duplicate_request_id_field",
+    "schema": "rpc.schema.json",
+    "expected_error": "schema",
+    "instance": {
+      "jsonrpc": "2.0",
+      "id": "request_1",
+      "method": "system.handshake",
+      "params": {
+        "protocol_version": "0.1.0",
+        "task_id": null,
+        "client_name": "core",
+        "capabilities": [
+          "inference.transcribe"
+        ]
+      },
+      "request_id": "request_1"
+    }
+  },
+  {
+    "name": "unknown_method",
+    "schema": "rpc.schema.json",
+    "expected_error": "schema",
+    "instance": {
+      "jsonrpc": "2.0",
+      "id": "request_get",
+      "method": "system.exec",
+      "params": {
+        "protocol_version": "0.1.0",
+        "task_id": "task_demo"
+      }
+    }
+  },
+  {
+    "name": "null_request_id",
+    "schema": "rpc.schema.json",
+    "expected_error": "schema",
+    "instance": {
+      "jsonrpc": "2.0",
+      "id": null,
+      "method": "system.handshake",
+      "params": {
+        "protocol_version": "0.1.0",
+        "task_id": null,
+        "client_name": "core",
+        "capabilities": [
+          "inference.transcribe"
+        ]
+      }
+    }
+  },
+  {
+    "name": "notification_has_id",
+    "schema": "rpc.schema.json",
+    "expected_error": "schema",
+    "instance": {
+      "jsonrpc": "2.0",
+      "method": "task.progress",
+      "params": {
+        "protocol_version": "0.1.0",
+        "task_id": "task_demo",
+        "stage": "asr",
+        "completed": 2,
+        "total": 10
+      },
+      "id": "request_bad"
+    }
+  },
+  {
+    "name": "response_has_result_and_error",
+    "schema": "rpc.schema.json",
+    "expected_error": "schema",
+    "instance": {
+      "jsonrpc": "2.0",
+      "id": "request_get",
+      "result": {
+        "protocol_version": "0.1.0",
+        "task_id": "task_demo",
+        "video_id": "video_demo",
+        "mode": "fast",
+        "state": "queued",
+        "stage": "resolve",
+        "attempt": 1,
+        "error": null
+      },
+      "error": {
+        "code": -32603,
+        "message": "Internal error"
+      }
+    }
+  },
+  {
+    "name": "response_missing_id",
+    "schema": "rpc.schema.json",
+    "expected_error": "schema",
+    "instance": {
+      "jsonrpc": "2.0",
+      "result": {
+        "protocol_version": "0.1.0",
+        "task_id": "task_demo",
+        "video_id": "video_demo",
+        "mode": "fast",
+        "state": "queued",
+        "stage": "resolve",
+        "attempt": 1,
+        "error": null
+      }
+    }
+  },
+  {
+    "name": "business_code_mismatch",
+    "schema": "rpc.schema.json",
+    "expected_error": "schema",
+    "instance": {
+      "jsonrpc": "2.0",
+      "id": "request_summary",
+      "error": {
+        "code": 1008,
+        "message": "Provider limit reached.",
+        "data": {
+          "protocol_version": "0.1.0",
+          "code": "rate_limit",
+          "message": "Provider limit reached.",
+          "task_id": "task_demo",
+          "recoverable": true,
+          "details": {
+            "reason": "quota_exhausted",
+            "retry_after_ms": 60000
+          }
+        }
+      }
+    }
+  },
+  {
+    "name": "business_message_mismatch",
+    "schema": "rpc.schema.json",
+    "expected_error": "semantic",
+    "instance": {
+      "jsonrpc": "2.0",
+      "id": "request_summary",
+      "error": {
+        "code": 1007,
+        "message": "Different message",
+        "data": {
+          "protocol_version": "0.1.0",
+          "code": "rate_limit",
+          "message": "Provider limit reached.",
+          "task_id": "task_demo",
+          "recoverable": true,
+          "details": {
+            "reason": "quota_exhausted",
+            "retry_after_ms": 60000
+          }
+        }
+      }
+    }
+  },
+  {
+    "name": "credential_detail_disallowed",
+    "schema": "rpc.schema.json",
+    "expected_error": "schema",
+    "instance": {
+      "jsonrpc": "2.0",
+      "id": "request_summary",
+      "error": {
+        "code": 1007,
+        "message": "Provider limit reached.",
+        "data": {
+          "protocol_version": "0.1.0",
+          "code": "rate_limit",
+          "message": "Provider limit reached.",
+          "task_id": "task_demo",
+          "recoverable": true,
+          "details": {
+            "reason": "quota_exhausted",
+            "retry_after_ms": 60000,
+            "token": "synthetic_secret"
+          }
+        }
+      }
+    }
+  },
+  {
+    "name": "negative_timestamp",
+    "schema": "domain.schema.json",
+    "expected_error": "schema",
+    "instance": {
+      "protocol_version": "0.1.0",
+      "task_id": "task_demo",
+      "video_id": "video_demo",
+      "language": "zh-CN",
+      "segments": [
+        {
+          "evidence_id": "evidence_1",
+          "start_ms": -1,
+          "end_ms": 1200,
+          "text": "这是合成测试文本。",
+          "origin": "subtitle",
+          "confidence": null
+        }
+      ]
+    }
+  },
+  {
+    "name": "reversed_time_range",
+    "schema": "domain.schema.json",
+    "expected_error": "semantic",
+    "instance": {
+      "protocol_version": "0.1.0",
+      "task_id": "task_demo",
+      "video_id": "video_demo",
+      "language": "zh-CN",
+      "segments": [
+        {
+          "evidence_id": "evidence_1",
+          "start_ms": 0,
+          "end_ms": 0,
+          "text": "这是合成测试文本。",
+          "origin": "subtitle",
+          "confidence": null
+        }
+      ]
+    }
+  },
+  {
+    "name": "duplicate_evidence_id",
+    "schema": "domain.schema.json",
+    "expected_error": "semantic",
+    "instance": {
+      "protocol_version": "0.1.0",
+      "task_id": "task_demo",
+      "video_id": "video_demo",
+      "language": "zh-CN",
+      "segments": [
+        {
+          "evidence_id": "evidence_1",
+          "start_ms": 0,
+          "end_ms": 1200,
+          "text": "这是合成测试文本。",
+          "origin": "subtitle",
+          "confidence": null
+        },
+        {
+          "evidence_id": "evidence_1",
+          "start_ms": 0,
+          "end_ms": 1200,
+          "text": "这是合成测试文本。",
+          "origin": "subtitle",
+          "confidence": null
+        }
+      ]
+    }
+  },
+  {
+    "name": "confidence_above_one",
+    "schema": "domain.schema.json",
+    "expected_error": "schema",
+    "instance": {
+      "protocol_version": "0.1.0",
+      "task_id": "task_demo",
+      "video_id": "video_demo",
+      "language": "zh-CN",
+      "segments": [
+        {
+          "evidence_id": "evidence_1",
+          "start_ms": 0,
+          "end_ms": 1200,
+          "text": "这是合成测试文本。",
+          "origin": "subtitle",
+          "confidence": 1.1
+        }
+      ]
+    }
+  },
+  {
+    "name": "path_traversal",
+    "schema": "domain.schema.json",
+    "expected_error": "schema",
+    "instance": {
+      "protocol_version": "0.1.0",
+      "task_id": "task_demo",
+      "evidence_id": "frame_1",
+      "timestamp_ms": 1000,
+      "file": {
+        "artifact_path": "../secret.txt",
+        "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "size_bytes": 32000
+      }
+    }
+  },
+  {
+    "name": "absolute_windows_path",
+    "schema": "domain.schema.json",
+    "expected_error": "schema",
+    "instance": {
+      "protocol_version": "0.1.0",
+      "task_id": "task_demo",
+      "evidence_id": "frame_1",
+      "timestamp_ms": 1000,
+      "file": {
+        "artifact_path": "C:\\secret.txt",
+        "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "size_bytes": 32000
+      }
+    }
+  },
+  {
+    "name": "invalid_content_hash",
+    "schema": "domain.schema.json",
+    "expected_error": "schema",
+    "instance": {
+      "protocol_version": "0.1.0",
+      "task_id": "task_demo",
+      "evidence_id": "frame_1",
+      "timestamp_ms": 1000,
+      "file": {
+        "artifact_path": "frames/frame_1.png",
+        "content_hash": "invalid",
+        "size_bytes": 32000
+      }
+    }
+  },
+  {
+    "name": "missing_bilibili_part",
+    "schema": "domain.schema.json",
+    "expected_error": "schema",
+    "instance": {
+      "protocol_version": "0.1.0",
+      "video_id": "video_demo",
+      "source": {
+        "kind": "bilibili",
+        "source_id": "BV1xx411c7mD",
+        "part_id": null
+      },
+      "title": "合成分 P 示例",
+      "duration_ms": null
+    }
+  },
+  {
+    "name": "unsupported_source",
+    "schema": "domain.schema.json",
+    "expected_error": "schema",
+    "instance": {
+      "protocol_version": "0.1.0",
+      "video_id": "video_demo",
+      "source": {
+        "kind": "other",
+        "source_id": "local_demo",
+        "part_id": null
+      },
+      "title": "合成视频",
+      "duration_ms": 1200
+    }
+  },
+  {
+    "name": "video_claim_without_evidence",
+    "schema": "domain.schema.json",
+    "expected_error": "schema",
+    "instance": {
+      "protocol_version": "0.1.0",
+      "task_id": "task_demo",
+      "video_id": "video_demo",
+      "title": "合成笔记",
+      "evidence_ids": [
+        "evidence_1"
+      ],
+      "items": [
+        {
+          "knowledge_item_id": "knowledge_1",
+          "text": "这是合成知识点。",
+          "origin": "video",
+          "evidence_ids": [],
+          "confidence": null,
+          "uncertainty": null
+        },
+        {
+          "knowledge_item_id": "knowledge_2",
+          "text": "这是模型推断示例。",
+          "origin": "model_inference",
+          "evidence_ids": [],
+          "confidence": null,
+          "uncertainty": "未由视频直接说明。"
+        }
+      ]
+    }
+  },
+  {
+    "name": "inference_without_uncertainty",
+    "schema": "domain.schema.json",
+    "expected_error": "schema",
+    "instance": {
+      "protocol_version": "0.1.0",
+      "task_id": "task_demo",
+      "video_id": "video_demo",
+      "title": "合成笔记",
+      "evidence_ids": [
+        "evidence_1"
+      ],
+      "items": [
+        {
+          "knowledge_item_id": "knowledge_1",
+          "text": "这是合成知识点。",
+          "origin": "video",
+          "evidence_ids": [
+            "evidence_1"
+          ],
+          "confidence": null,
+          "uncertainty": null
+        },
+        {
+          "knowledge_item_id": "knowledge_2",
+          "text": "这是模型推断示例。",
+          "origin": "model_inference",
+          "evidence_ids": [],
+          "confidence": null,
+          "uncertainty": null
+        }
+      ]
+    }
+  },
+  {
+    "name": "unknown_evidence_reference",
+    "schema": "domain.schema.json",
+    "expected_error": "semantic",
+    "instance": {
+      "protocol_version": "0.1.0",
+      "task_id": "task_demo",
+      "video_id": "video_demo",
+      "title": "合成笔记",
+      "evidence_ids": [
+        "evidence_1"
+      ],
+      "items": [
+        {
+          "knowledge_item_id": "knowledge_1",
+          "text": "这是合成知识点。",
+          "origin": "video",
+          "evidence_ids": [
+            "missing"
+          ],
+          "confidence": null,
+          "uncertainty": null
+        },
+        {
+          "knowledge_item_id": "knowledge_2",
+          "text": "这是模型推断示例。",
+          "origin": "model_inference",
+          "evidence_ids": [],
+          "confidence": null,
+          "uncertainty": "未由视频直接说明。"
+        }
+      ]
+    }
+  },
+  {
+    "name": "progress_exceeds_total",
+    "schema": "rpc.schema.json",
+    "expected_error": "semantic",
+    "instance": {
+      "jsonrpc": "2.0",
+      "method": "task.progress",
+      "params": {
+        "protocol_version": "0.1.0",
+        "task_id": "task_demo",
+        "stage": "asr",
+        "completed": 11,
+        "total": 10
+      }
+    }
+  },
+  {
+    "name": "failed_task_without_error",
+    "schema": "rpc.schema.json",
+    "expected_error": "semantic",
+    "instance": {
+      "jsonrpc": "2.0",
+      "id": "request_get",
+      "result": {
+        "protocol_version": "0.1.0",
+        "task_id": "task_demo",
+        "video_id": "video_demo",
+        "mode": "fast",
+        "state": "failed",
+        "stage": "resolve",
+        "attempt": 1,
+        "error": null
+      }
+    }
+  },
+  {
+    "name": "task_error_id_mismatch",
+    "schema": "domain.schema.json",
+    "expected_error": "semantic",
+    "instance": {
+      "protocol_version": "0.1.0",
+      "task_id": "task_demo",
+      "video_id": "video_demo",
+      "mode": "fast",
+      "state": "waiting_provider",
+      "stage": "summarize",
+      "attempt": 1,
+      "error": {
+        "protocol_version": "0.1.0",
+        "code": "rate_limit",
+        "message": "Provider limit reached.",
+        "task_id": "another_task",
+        "recoverable": true,
+        "details": {
+          "reason": "quota_exhausted",
+          "retry_after_ms": 60000
+        }
+      }
+    }
+  },
+  {
+    "name": "waiting_provider_without_limit",
+    "schema": "domain.schema.json",
+    "expected_error": "semantic",
+    "instance": {
+      "protocol_version": "0.1.0",
+      "task_id": "task_demo",
+      "video_id": "video_demo",
+      "mode": "fast",
+      "state": "waiting_provider",
+      "stage": "summarize",
+      "attempt": 1,
+      "error": {
+        "protocol_version": "0.1.0",
+        "code": "storage",
+        "message": "Provider limit reached.",
+        "task_id": "task_demo",
+        "recoverable": true,
+        "details": {
+          "reason": "quota_exhausted",
+          "retry_after_ms": 60000
+        }
+      }
+    }
+  },
+  {
+    "name": "parse_error_requires_null_id",
+    "schema": "rpc.schema.json",
+    "expected_error": "schema",
+    "instance": {
+      "jsonrpc": "2.0",
+      "id": "request_bad",
+      "error": {
+        "code": -32700,
+        "message": "Parse error"
+      }
+    }
+  },
+  {
+    "name": "id_trailing_lf",
+    "schema": "rpc.schema.json",
+    "instance": {
+      "jsonrpc": "2.0",
+      "id": "request_1\n",
+      "method": "system.handshake",
+      "params": {
+        "protocol_version": "0.1.0",
+        "task_id": null,
+        "client_name": "core",
+        "capabilities": [
+          "inference.transcribe"
+        ]
+      }
+    },
+    "expected_error": "schema"
+  },
+  {
+    "name": "artifact_path_trailing_lf",
+    "schema": "domain.schema.json",
+    "instance": {
+      "protocol_version": "0.1.0",
+      "task_id": "task_demo",
+      "evidence_id": "frame_1",
+      "timestamp_ms": 1000,
+      "file": {
+        "artifact_path": "frames/frame_1.png\n",
+        "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "size_bytes": 32000
+      }
+    },
+    "expected_error": "schema"
+  },
+  {
+    "name": "content_hash_trailing_lf",
+    "schema": "domain.schema.json",
+    "instance": {
+      "protocol_version": "0.1.0",
+      "task_id": "task_demo",
+      "evidence_id": "frame_1",
+      "timestamp_ms": 1000,
+      "file": {
+        "artifact_path": "frames/frame_1.png",
+        "content_hash": "0000000000000000000000000000000000000000000000000000000000000000\n",
+        "size_bytes": 32000
+      }
+    },
+    "expected_error": "schema"
+  },
+  {
+    "name": "id_trailing_crlf",
+    "schema": "rpc.schema.json",
+    "instance": {
+      "jsonrpc": "2.0",
+      "id": "request_1\r\n",
+      "method": "system.handshake",
+      "params": {
+        "protocol_version": "0.1.0",
+        "task_id": null,
+        "client_name": "core",
+        "capabilities": [
+          "inference.transcribe"
+        ]
+      }
+    },
+    "expected_error": "schema"
+  },
+  {
+    "name": "artifact_path_trailing_crlf",
+    "schema": "domain.schema.json",
+    "instance": {
+      "protocol_version": "0.1.0",
+      "task_id": "task_demo",
+      "evidence_id": "frame_1",
+      "timestamp_ms": 1000,
+      "file": {
+        "artifact_path": "frames/frame_1.png\r\n",
+        "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "size_bytes": 32000
+      }
+    },
+    "expected_error": "schema"
+  },
+  {
+    "name": "content_hash_trailing_crlf",
+    "schema": "domain.schema.json",
+    "instance": {
+      "protocol_version": "0.1.0",
+      "task_id": "task_demo",
+      "evidence_id": "frame_1",
+      "timestamp_ms": 1000,
+      "file": {
+        "artifact_path": "frames/frame_1.png",
+        "content_hash": "0000000000000000000000000000000000000000000000000000000000000000\r\n",
+        "size_bytes": 32000
+      }
+    },
+    "expected_error": "schema"
+  },
+  {
+    "name": "id_trailing_line_separator",
+    "schema": "rpc.schema.json",
+    "instance": {
+      "jsonrpc": "2.0",
+      "id": "request_1 ",
+      "method": "system.handshake",
+      "params": {
+        "protocol_version": "0.1.0",
+        "task_id": null,
+        "client_name": "core",
+        "capabilities": [
+          "inference.transcribe"
+        ]
+      }
+    },
+    "expected_error": "schema"
+  },
+  {
+    "name": "artifact_path_trailing_line_separator",
+    "schema": "domain.schema.json",
+    "instance": {
+      "protocol_version": "0.1.0",
+      "task_id": "task_demo",
+      "evidence_id": "frame_1",
+      "timestamp_ms": 1000,
+      "file": {
+        "artifact_path": "frames/frame_1.png ",
+        "content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "size_bytes": 32000
+      }
+    },
+    "expected_error": "schema"
+  },
+  {
+    "name": "content_hash_trailing_line_separator",
+    "schema": "domain.schema.json",
+    "instance": {
+      "protocol_version": "0.1.0",
+      "task_id": "task_demo",
+      "evidence_id": "frame_1",
+      "timestamp_ms": 1000,
+      "file": {
+        "artifact_path": "frames/frame_1.png",
+        "content_hash": "0000000000000000000000000000000000000000000000000000000000000000 ",
+        "size_bytes": 32000
+      }
+    },
+    "expected_error": "schema"
+  },
+  {
+    "name": "request_id_empty",
+    "schema": "rpc.schema.json",
+    "instance": {
+      "jsonrpc": "2.0",
+      "id": "",
+      "method": "system.handshake",
+      "params": {
+        "protocol_version": "0.1.0",
+        "task_id": null,
+        "client_name": "core",
+        "capabilities": [
+          "inference.transcribe"
+        ]
+      }
+    },
+    "expected_error": "schema"
+  },
+  {
+    "name": "request_id_punctuation",
+    "schema": "rpc.schema.json",
+    "instance": {
+      "jsonrpc": "2.0",
+      "id": "req.1",
+      "method": "system.handshake",
+      "params": {
+        "protocol_version": "0.1.0",
+        "task_id": null,
+        "client_name": "core",
+        "capabilities": [
+          "inference.transcribe"
+        ]
+      }
+    },
+    "expected_error": "schema"
+  },
+  {
+    "name": "request_id_too_long",
+    "schema": "rpc.schema.json",
+    "instance": {
+      "jsonrpc": "2.0",
+      "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "method": "system.handshake",
+      "params": {
+        "protocol_version": "0.1.0",
+        "task_id": null,
+        "client_name": "core",
+        "capabilities": [
+          "inference.transcribe"
+        ]
+      }
+    },
+    "expected_error": "schema"
+  }
+]

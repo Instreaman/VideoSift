@@ -1,0 +1,65 @@
+# VideoSift
+
+Windows-first native video knowledge extraction, designed around a Rust core,
+an Avalonia desktop client and isolated Python inference workers.
+
+[简体中文](README.zh-CN.md)
+
+## Status
+
+**Phase 01 SQLite task storage and restart recovery accepted.**
+There is no runnable application, video adapter, AI worker or desktop GUI yet.
+No performance target has been measured. No release or installer is available.
+
+Present in this repository:
+
+- Architecture, ownership boundaries, security rules and phased acceptance criteria.
+- Shared JSON Schema drafts, JSON-RPC examples and executable contract checks.
+- Code style, desktop design tokens and a credential-free Phase 0 CI workflow.
+- A Rust core library with tested task lifecycle transitions and shared state serialization.
+
+See [SQLite task storage](docs/STORAGE.md), [process supervision](docs/PROCESS_SUPERVISION.md), [bounded Mock scheduling](docs/SCHEDULER.md), [task state rules](docs/TASK_STATE.md) and [Rust checks](CONTRIBUTING.md).
+
+Planned: Bilibili and local video input; subtitle-first transcription; ASR/OCR;
+timestamped evidence; Fast/Standard/Deep processing; Codex CLI summaries; SQLite
+search and content-addressed caching; native desktop UI; measured acceleration.
+
+## Validate Phase 0
+
+Use Python 3.12+ with `jsonschema` from [requirements-dev.txt](requirements-dev.txt):
+
+```text
+python scripts/validate_repository.py
+python -m unittest discover -s tests -v
+```
+
+See [CONTRIBUTING](CONTRIBUTING.md) for isolated setup and later language checks.
+These commands validate contracts and repository consistency, not application behavior.
+No ChatGPT login, paid API, media download or GPU is required.
+
+## Design
+
+Rust is the sole scheduler and persistence owner. C#/.NET 10/Avalonia presents
+results; Python performs inference in supervised processes. FFmpeg and mature
+native libraries handle media computation. No web frontend or container runtime
+is part of the application architecture.
+
+The planned default LLM provider uses an authenticated Codex CLI; access depends
+on the user's account and current limits. Development uses mocks. Actual LLM
+tests require explicit opt-in and a strict call budget; subscription access and
+performance are not guaranteed by this project.
+
+## Project documents
+
+- [Architecture](docs/ARCHITECTURE.md) and [IPC contracts](contracts/README.md)
+- [Roadmap](docs/ROADMAP.md), [decisions](docs/DECISIONS.md)
+- [Style guide](docs/STYLE_GUIDE.md), [design system](docs/DESIGN_SYSTEM.md)
+- [Security](docs/SECURITY.md), [benchmark plan](docs/BENCHMARK.md)
+- [Contributing](CONTRIBUTING.md)
+
+Phase branches require maintainer approval before merge.
+
+## License
+
+Copyright 2026 Instreaman. Licensed under the [Apache License 2.0](LICENSE).
+Third-party dependencies retain their own licenses.

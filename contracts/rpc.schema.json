@@ -1,0 +1,942 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://videosift.local/contracts/v0.1/rpc.schema.json",
+  "title": "VideoSift JSON-RPC profile draft 0.1.0",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/Request"
+    },
+    {
+      "$ref": "#/$defs/Notification"
+    },
+    {
+      "$ref": "#/$defs/SuccessResponse"
+    },
+    {
+      "$ref": "#/$defs/ErrorResponse"
+    }
+  ],
+  "$defs": {
+    "HandshakeParams": {
+      "type": "object",
+      "properties": {
+        "protocol_version": {
+          "const": "0.1.0"
+        },
+        "task_id": {
+          "type": "null"
+        },
+        "client_name": {
+          "enum": [
+            "desktop",
+            "cli",
+            "core",
+            "worker"
+          ]
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_.]*(?![\\s\\S])",
+            "maxLength": 128
+          },
+          "maxItems": 64,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "protocol_version",
+        "task_id",
+        "client_name",
+        "capabilities"
+      ],
+      "additionalProperties": false
+    },
+    "HandshakeResult": {
+      "type": "object",
+      "properties": {
+        "protocol_version": {
+          "const": "0.1.0"
+        },
+        "task_id": {
+          "type": "null"
+        },
+        "server_name": {
+          "enum": [
+            "desktop",
+            "cli",
+            "core",
+            "worker"
+          ]
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_.]*(?![\\s\\S])",
+            "maxLength": 128
+          },
+          "maxItems": 64,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "protocol_version",
+        "task_id",
+        "server_name",
+        "capabilities"
+      ],
+      "additionalProperties": false
+    },
+    "TaskParams": {
+      "type": "object",
+      "properties": {
+        "protocol_version": {
+          "const": "0.1.0"
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]+(?![\\s\\S])"
+        }
+      },
+      "required": [
+        "protocol_version",
+        "task_id"
+      ],
+      "additionalProperties": false
+    },
+    "TranscribeParams": {
+      "type": "object",
+      "properties": {
+        "protocol_version": {
+          "const": "0.1.0"
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]+(?![\\s\\S])"
+        },
+        "audio": {
+          "$ref": "https://videosift.local/contracts/v0.1/domain.schema.json#/$defs/FileReference"
+        },
+        "language": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 35
+        }
+      },
+      "required": [
+        "protocol_version",
+        "task_id",
+        "audio",
+        "language"
+      ],
+      "additionalProperties": false
+    },
+    "ProgressParams": {
+      "type": "object",
+      "properties": {
+        "protocol_version": {
+          "const": "0.1.0"
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]+(?![\\s\\S])"
+        },
+        "stage": {
+          "enum": [
+            "resolve",
+            "metadata",
+            "subtitle",
+            "audio",
+            "asr",
+            "keyframe",
+            "ocr",
+            "align",
+            "summarize",
+            "validate",
+            "export"
+          ]
+        },
+        "completed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "total": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "protocol_version",
+        "task_id",
+        "stage",
+        "completed",
+        "total"
+      ],
+      "additionalProperties": false
+    },
+    "ExitingParams": {
+      "type": "object",
+      "properties": {
+        "protocol_version": {
+          "const": "0.1.0"
+        },
+        "task_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_-]+(?![\\s\\S])"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "exit_code": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        }
+      },
+      "required": [
+        "protocol_version",
+        "task_id",
+        "exit_code"
+      ],
+      "additionalProperties": false
+    },
+    "RpcError": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "code": {
+              "enum": [
+                -32700,
+                -32600,
+                -32601,
+                -32602,
+                -32603
+              ]
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "code": {
+              "const": 1000
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            },
+            "data": {
+              "allOf": [
+                {
+                  "$ref": "https://videosift.local/contracts/v0.1/domain.schema.json#/$defs/Error"
+                },
+                {
+                  "properties": {
+                    "code": {
+                      "const": "validation"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "code": {
+              "const": 1001
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            },
+            "data": {
+              "allOf": [
+                {
+                  "$ref": "https://videosift.local/contracts/v0.1/domain.schema.json#/$defs/Error"
+                },
+                {
+                  "properties": {
+                    "code": {
+                      "const": "network"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "code": {
+              "const": 1002
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            },
+            "data": {
+              "allOf": [
+                {
+                  "$ref": "https://videosift.local/contracts/v0.1/domain.schema.json#/$defs/Error"
+                },
+                {
+                  "properties": {
+                    "code": {
+                      "const": "authentication"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "code": {
+              "const": 1003
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            },
+            "data": {
+              "allOf": [
+                {
+                  "$ref": "https://videosift.local/contracts/v0.1/domain.schema.json#/$defs/Error"
+                },
+                {
+                  "properties": {
+                    "code": {
+                      "const": "source"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "code": {
+              "const": 1004
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            },
+            "data": {
+              "allOf": [
+                {
+                  "$ref": "https://videosift.local/contracts/v0.1/domain.schema.json#/$defs/Error"
+                },
+                {
+                  "properties": {
+                    "code": {
+                      "const": "media"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "code": {
+              "const": 1005
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            },
+            "data": {
+              "allOf": [
+                {
+                  "$ref": "https://videosift.local/contracts/v0.1/domain.schema.json#/$defs/Error"
+                },
+                {
+                  "properties": {
+                    "code": {
+                      "const": "inference"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "code": {
+              "const": 1006
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            },
+            "data": {
+              "allOf": [
+                {
+                  "$ref": "https://videosift.local/contracts/v0.1/domain.schema.json#/$defs/Error"
+                },
+                {
+                  "properties": {
+                    "code": {
+                      "const": "provider"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "code": {
+              "const": 1007
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            },
+            "data": {
+              "allOf": [
+                {
+                  "$ref": "https://videosift.local/contracts/v0.1/domain.schema.json#/$defs/Error"
+                },
+                {
+                  "properties": {
+                    "code": {
+                      "const": "rate_limit"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "code": {
+              "const": 1008
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            },
+            "data": {
+              "allOf": [
+                {
+                  "$ref": "https://videosift.local/contracts/v0.1/domain.schema.json#/$defs/Error"
+                },
+                {
+                  "properties": {
+                    "code": {
+                      "const": "storage"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "code": {
+              "const": 1009
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            },
+            "data": {
+              "allOf": [
+                {
+                  "$ref": "https://videosift.local/contracts/v0.1/domain.schema.json#/$defs/Error"
+                },
+                {
+                  "properties": {
+                    "code": {
+                      "const": "configuration"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "code": {
+              "const": 1010
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            },
+            "data": {
+              "allOf": [
+                {
+                  "$ref": "https://videosift.local/contracts/v0.1/domain.schema.json#/$defs/Error"
+                },
+                {
+                  "properties": {
+                    "code": {
+                      "const": "cancellation"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "code": {
+              "const": 1011
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            },
+            "data": {
+              "allOf": [
+                {
+                  "$ref": "https://videosift.local/contracts/v0.1/domain.schema.json#/$defs/Error"
+                },
+                {
+                  "properties": {
+                    "code": {
+                      "const": "internal"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "data"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "Request": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "const": "2.0"
+            },
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_-]+(?![\\s\\S])"
+            },
+            "method": {
+              "const": "system.handshake"
+            },
+            "params": {
+              "$ref": "#/$defs/HandshakeParams"
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "id",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "const": "2.0"
+            },
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_-]+(?![\\s\\S])"
+            },
+            "method": {
+              "const": "task.get"
+            },
+            "params": {
+              "$ref": "#/$defs/TaskParams"
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "id",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "const": "2.0"
+            },
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_-]+(?![\\s\\S])"
+            },
+            "method": {
+              "const": "task.cancel"
+            },
+            "params": {
+              "$ref": "#/$defs/TaskParams"
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "id",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "const": "2.0"
+            },
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_-]+(?![\\s\\S])"
+            },
+            "method": {
+              "const": "task.pause"
+            },
+            "params": {
+              "$ref": "#/$defs/TaskParams"
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "id",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "const": "2.0"
+            },
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_-]+(?![\\s\\S])"
+            },
+            "method": {
+              "const": "task.resume"
+            },
+            "params": {
+              "$ref": "#/$defs/TaskParams"
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "id",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "const": "2.0"
+            },
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_-]+(?![\\s\\S])"
+            },
+            "method": {
+              "const": "inference.transcribe"
+            },
+            "params": {
+              "$ref": "#/$defs/TranscribeParams"
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "id",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "Notification": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "const": "2.0"
+            },
+            "method": {
+              "const": "task.progress"
+            },
+            "params": {
+              "$ref": "#/$defs/ProgressParams"
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jsonrpc": {
+              "const": "2.0"
+            },
+            "method": {
+              "const": "process.exiting"
+            },
+            "params": {
+              "$ref": "#/$defs/ExitingParams"
+            }
+          },
+          "required": [
+            "jsonrpc",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "SuccessResponse": {
+      "type": "object",
+      "properties": {
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]+(?![\\s\\S])"
+        },
+        "result": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/HandshakeResult"
+            },
+            {
+              "$ref": "https://videosift.local/contracts/v0.1/domain.schema.json#/$defs/ProcessingTask"
+            },
+            {
+              "$ref": "https://videosift.local/contracts/v0.1/domain.schema.json#/$defs/Transcript"
+            }
+          ]
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "id",
+        "result"
+      ],
+      "additionalProperties": false
+    },
+    "ErrorResponse": {
+      "type": "object",
+      "properties": {
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_-]+(?![\\s\\S])"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error": {
+          "$ref": "#/$defs/RpcError"
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "id",
+        "error"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "error": {
+                "properties": {
+                  "code": {
+                    "const": -32700
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "id": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

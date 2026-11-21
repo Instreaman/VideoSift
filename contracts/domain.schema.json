@@ -1,0 +1,556 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://videosift.local/contracts/v0.1/domain.schema.json",
+  "title": "VideoSift shared domain draft 0.1.0",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/Video"
+    },
+    {
+      "$ref": "#/$defs/ProcessingTask"
+    },
+    {
+      "$ref": "#/$defs/Transcript"
+    },
+    {
+      "$ref": "#/$defs/Keyframe"
+    },
+    {
+      "$ref": "#/$defs/Summary"
+    },
+    {
+      "$ref": "#/$defs/Error"
+    }
+  ],
+  "$defs": {
+    "VideoSource": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "local"
+            },
+            "source_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_-]+(?![\\s\\S])"
+            },
+            "part_id": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "kind",
+            "source_id",
+            "part_id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "bilibili"
+            },
+            "source_id": {
+              "type": "string",
+              "pattern": "^BV[0-9A-Za-z]{10}(?![\\s\\S])"
+            },
+            "part_id": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "kind",
+            "source_id",
+            "part_id"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "FileReference": {
+      "type": "object",
+      "properties": {
+        "artifact_path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)?(?![\\s\\S])"
+        },
+        "content_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}(?![\\s\\S])"
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "artifact_path",
+        "content_hash",
+        "size_bytes"
+      ],
+      "additionalProperties": false
+    },
+    "Video": {
+      "type": "object",
+      "properties": {
+        "protocol_version": {
+          "const": "0.1.0"
+        },
+        "video_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]+(?![\\s\\S])"
+        },
+        "source": {
+          "$ref": "#/$defs/VideoSource"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "duration_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "protocol_version",
+        "video_id",
+        "source",
+        "title",
+        "duration_ms"
+      ],
+      "additionalProperties": false
+    },
+    "ProcessingTask": {
+      "type": "object",
+      "properties": {
+        "protocol_version": {
+          "const": "0.1.0"
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]+(?![\\s\\S])"
+        },
+        "video_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]+(?![\\s\\S])"
+        },
+        "mode": {
+          "enum": [
+            "fast",
+            "standard",
+            "deep"
+          ]
+        },
+        "state": {
+          "enum": [
+            "queued",
+            "running",
+            "pause_requested",
+            "paused",
+            "waiting_provider",
+            "cancel_requested",
+            "cancelled",
+            "succeeded",
+            "failed",
+            "interrupted"
+          ]
+        },
+        "stage": {
+          "enum": [
+            "resolve",
+            "metadata",
+            "subtitle",
+            "audio",
+            "asr",
+            "keyframe",
+            "ocr",
+            "align",
+            "summarize",
+            "validate",
+            "export"
+          ]
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Error"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "protocol_version",
+        "task_id",
+        "video_id",
+        "mode",
+        "state",
+        "stage",
+        "attempt",
+        "error"
+      ],
+      "additionalProperties": false
+    },
+    "TranscriptSegment": {
+      "type": "object",
+      "properties": {
+        "evidence_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]+(?![\\s\\S])"
+        },
+        "start_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "end_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 65536
+        },
+        "origin": {
+          "enum": [
+            "subtitle",
+            "asr"
+          ]
+        },
+        "confidence": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "required": [
+        "evidence_id",
+        "start_ms",
+        "end_ms",
+        "text",
+        "origin",
+        "confidence"
+      ],
+      "additionalProperties": false
+    },
+    "Transcript": {
+      "type": "object",
+      "properties": {
+        "protocol_version": {
+          "const": "0.1.0"
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]+(?![\\s\\S])"
+        },
+        "video_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]+(?![\\s\\S])"
+        },
+        "language": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 35
+        },
+        "segments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TranscriptSegment"
+          },
+          "maxItems": 10000
+        }
+      },
+      "required": [
+        "protocol_version",
+        "task_id",
+        "video_id",
+        "language",
+        "segments"
+      ],
+      "additionalProperties": false
+    },
+    "Keyframe": {
+      "type": "object",
+      "properties": {
+        "protocol_version": {
+          "const": "0.1.0"
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]+(?![\\s\\S])"
+        },
+        "evidence_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]+(?![\\s\\S])"
+        },
+        "timestamp_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "file": {
+          "$ref": "#/$defs/FileReference"
+        }
+      },
+      "required": [
+        "protocol_version",
+        "task_id",
+        "evidence_id",
+        "timestamp_ms",
+        "file"
+      ],
+      "additionalProperties": false
+    },
+    "KnowledgeItem": {
+      "type": "object",
+      "properties": {
+        "knowledge_item_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]+(?![\\s\\S])"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 65536
+        },
+        "origin": {
+          "enum": [
+            "video",
+            "model_inference",
+            "external_knowledge"
+          ]
+        },
+        "evidence_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_-]+(?![\\s\\S])"
+          },
+          "maxItems": 1000,
+          "uniqueItems": true
+        },
+        "confidence": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "uncertainty": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 2048
+        }
+      },
+      "required": [
+        "knowledge_item_id",
+        "text",
+        "origin",
+        "evidence_ids",
+        "confidence",
+        "uncertainty"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "origin": {
+                "const": "video"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "evidence_ids": {
+                "minItems": 1
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "uncertainty": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "Summary": {
+      "type": "object",
+      "properties": {
+        "protocol_version": {
+          "const": "0.1.0"
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]+(?![\\s\\S])"
+        },
+        "video_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]+(?![\\s\\S])"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "evidence_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_-]+(?![\\s\\S])"
+          },
+          "maxItems": 10000,
+          "uniqueItems": true
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/KnowledgeItem"
+          },
+          "maxItems": 1000
+        }
+      },
+      "required": [
+        "protocol_version",
+        "task_id",
+        "video_id",
+        "title",
+        "evidence_ids",
+        "items"
+      ],
+      "additionalProperties": false
+    },
+    "Error": {
+      "type": "object",
+      "properties": {
+        "protocol_version": {
+          "const": "0.1.0"
+        },
+        "code": {
+          "enum": [
+            "validation",
+            "network",
+            "authentication",
+            "source",
+            "media",
+            "inference",
+            "provider",
+            "rate_limit",
+            "storage",
+            "configuration",
+            "cancellation",
+            "internal"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "task_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_-]+(?![\\s\\S])"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recoverable": {
+          "type": "boolean"
+        },
+        "details": {
+          "type": "object",
+          "properties": {
+            "reason": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*(?![\\s\\S])",
+              "maxLength": 128
+            },
+            "retry_after_ms": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 86400000
+            }
+          },
+          "required": [
+            "reason"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocol_version",
+        "code",
+        "message",
+        "task_id",
+        "recoverable"
+      ],
+      "additionalProperties": false
+    }
+  }
+}
