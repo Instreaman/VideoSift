@@ -60,7 +60,8 @@ README 只列实有功能，未实现能力标记 Planned。仓库描述建议�
 ## Rust 核心检查
 
 使用 rust-toolchain.toml 固定的工具链。Windows 需要 MSVC C++ 构建工具与 Windows SDK。
-当前 workspace 只有 core crate；process-test-helper 是合成子进程测试工具，不是应用 CLI。
+workspace 包含 videosift-core 和 videosift-cli。前者提供核心库和合成子进程测试工具，后者生成独立的 videosift 可执行文件。
+CLI 的跨进程验收用例随 workspace 测试一起执行，见 [CLI 使用说明](docs/CLI.md)。
 状态机见 [TASK_STATE](docs/TASK_STATE.md)，进程验证见 [PROCESS_SUPERVISION](docs/PROCESS_SUPERVISION.md)。
 
 ```text
