@@ -15,6 +15,9 @@ Both are available through the Rust core library.
 - **Local file input.** Validate a selected, nonempty regular file under a caller-authorized directory.
   Its BLAKE3 content digest identifies the source across renames and copies. Media format and playability checks are planned. [File validation and platform limits](docs/LOCAL_INPUT.md)
 
+The third Phase 02 item adds a metadata request to the Rust core and validates page selection against the response.
+It is under review. Tests use a mock transport and synthetic catalogs. [Metadata behavior and limits](docs/BILIBILI_METADATA.md)
+
 The standalone Rust CLI runs a synthetic task with a Mock Worker and Mock Provider. The first-run example
 shows how to run it twice in the same private data directory and check for cache hits on the second run. [CLI quick start](docs/CLI.md)
 
@@ -28,7 +31,7 @@ Present in this repository:
 
 See [SQLite task storage](docs/STORAGE.md), [process supervision](docs/PROCESS_SUPERVISION.md), [bounded Mock scheduling](docs/SCHEDULER.md), [task state rules](docs/TASK_STATE.md) and [Rust checks](CONTRIBUTING.md).
 
-Planned: Bilibili retrieval and media inspection; subtitle-first transcription; ASR/OCR;
+Planned: Bilibili subtitle and audio retrieval and media inspection; subtitle-first transcription; ASR/OCR;
 timestamped evidence; Fast/Standard/Deep processing; Codex CLI summaries; integrated
 transcript search; native desktop UI; measured acceleration.
 

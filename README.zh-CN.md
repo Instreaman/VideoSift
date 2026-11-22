@@ -12,13 +12,15 @@
 - **Bilibili 输入。** 离线解析 BV 号或标准播放页 URL。校验分 P 需要调用方提供分 P 目录。遇到多 P 视频时，须明确选择目标页。[输入规则与分 P 选择](docs/BILIBILI_INPUT.md)
 - **本地文件输入。** 校验调用方在授权目录下选定的非空普通文件，以文件内容的 BLAKE3 摘要作为来源标识。改名或复制后，相同内容保留同一标识。媒体格式与可播放性检查属于后续工作。[文件校验与平台限制](docs/LOCAL_INPUT.md)
 
+Phase 02 第三项在 Rust 核心库中加入元数据请求，并根据响应校验分 P 选择，当前等待验收。测试使用 Mock 传输和合成目录。[元数据行为与限制](docs/BILIBILI_METADATA.md)
+
 独立 Rust CLI 使用 Mock Worker 和 Mock Provider 运行合成任务。首次运行示例演示如何在同一私有数据目录连续运行两次，并查看第二次运行的缓存命中结果。[CLI 使用说明](docs/CLI.md)
 
 仓库已提供架构边界、安全规范、分阶段验收标准、JSON Schema 草案、JSON-RPC 示例及可执行校验、统一代码与视觉规范，以及不依赖账号凭据的 Phase 0 CI 配置。
 
 Rust core 已提供分阶段缓存和[中文子串检索对照实验](docs/CACHE_SEARCH.md)。
 
-计划实现（Planned）：Bilibili 网络获取与媒体探测、字幕优先与本地语音识别、关键帧与文字识别、带时间戳证据的知识笔记、Fast/Standard/Deep 模式、Codex CLI 总结、字幕检索接入、原生桌面及实测硬件优化。
+计划实现（Planned）：Bilibili 字幕和音轨获取与媒体探测、字幕优先与本地语音识别、关键帧与文字识别、带时间戳证据的知识笔记、Fast/Standard/Deep 模式、Codex CLI 总结、字幕检索接入、原生桌面及实测硬件优化。
 
 已提供 Rust core 库的任务状态转换、状态字段序列化、[有界 Mock 调度](docs/SCHEDULER.md)和[进程监管](docs/PROCESS_SUPERVISION.md)。规则和边界见
 [任务状态机](docs/TASK_STATE.md)和 [SQLite 任务存储](docs/STORAGE.md)，构建检查见 [开发说明](CONTRIBUTING.md)。

@@ -1,4 +1,6 @@
-//! Offline Bilibili input parsing and page selection.
+//! Bilibili input parsing, metadata retrieval and page selection.
+
+pub mod metadata;
 
 use serde::Serialize;
 use thiserror::Error;
