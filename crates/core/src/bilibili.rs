@@ -2,6 +2,7 @@
 
 pub mod audio;
 mod https;
+pub mod media;
 pub mod metadata;
 mod request;
 pub mod subtitles;
