@@ -9,7 +9,8 @@ Rust core 通过 `bilibili::subtitles` 提供轨道发现和正文获取。这�
 
 1. 传入[已校验的元数据](BILIBILI_METADATA.md)和选中的 `BilibiliSource`。核对 BV 与
    `part_id`，从目录读取相应 `cid`，然后以 BV 和 `cid` 请求
-   `https://api.bilibili.com/x/player/v2`。若响应带有 `data.cid`，它必须与请求一致。
+   `https://api.bilibili.com/x/player/v2`。响应可省略 `data.cid`。显式 `null` 或无法解析为无符号整数的值
+   返回 `RequestError::InvalidResponse`，与请求不匹配的无符号整数返回 `InvalidCatalog`。
 2. 业务响应须有 `code: 0` 和完整的 `data.subtitle.subtitles` 数组。仅显式空数组表示无字幕。
    数组缺失、为 null 或格式不符均返回错误。目录最多 32 条轨道，每条须有 2 至 35 字节的 ASCII
    语言标识（字母数字段，可用连字符分隔）、非空白且不超过 128 个 Unicode 标量的名称，以及合规地址。
@@ -20,6 +21,10 @@ Rust core 通过 `bilibili::subtitles` 提供轨道发现和正文获取。这�
 
 - 正文接受 JSON `body` 数组，每条含 `from`、`to` 和 `content`。时间以秒为输入，
   转为最接近的整数毫秒，端点范围沿用共享契约。起点非负且按顺序不减，末端须晚于起点，允许重叠。
+- 字幕结束时间的上限来自所选分 P 的元数据。元数据时长只精确到整数秒，按该值作为严格上限，
+  恰好等于上限有效。结束时间在转换为毫秒前就会比较，超过上限即返回 `InvalidSubtitle`，
+  包括会舍入到同一毫秒的超出量。若平台时长省略了末尾的小数秒，该段字幕可能被拒绝。
+  元数据为 0 秒时，任何非空时间区间均无法通过。
 - 正文须有 1 至 10000 条，单条文本须包含非空白字符，最多 65536 个 Unicode 标量。
   缺字段、空正文或无效条目返回 `InvalidSubtitle`。字幕文本原样作为不可信数据返回，
   调用方在构建任务 `Transcript` 时再分配证据标识。

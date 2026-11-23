@@ -151,11 +151,46 @@ async fn only_explicit_empty_catalog_means_no_subtitles() {
 }
 
 #[tokio::test]
-async fn rejects_mismatched_cid_and_invalid_track_catalogs() {
+async fn optional_cid_must_match_when_present() {
     let metadata = metadata().await;
     let source = selected_source();
-    let mut wrong_cid = catalog(vec![]);
-    wrong_cid["data"]["cid"] = json!(91);
+    for include_cid in [false, true] {
+        let mut body = catalog(vec![track(SUBTITLE_URL, "zh-CN")]);
+        if !include_cid {
+            body["data"].as_object_mut().unwrap().remove("cid");
+        }
+        let tracks = discover_subtitles_with(&metadata, &source, |_| ready(Ok(reply(body))))
+            .await
+            .unwrap();
+        assert_eq!(tracks.len(), 1);
+    }
+
+    for (cid, expected) in [
+        (
+            Value::Null,
+            SubtitleError::Request(RequestError::InvalidResponse),
+        ),
+        (
+            json!("92"),
+            SubtitleError::Request(RequestError::InvalidResponse),
+        ),
+        (json!(91), SubtitleError::InvalidCatalog),
+    ] {
+        let mut body = catalog(vec![]);
+        body["data"]["cid"] = cid;
+        assert_eq!(
+            discover_subtitles_with(&metadata, &source, |_| ready(Ok(reply(body))))
+                .await
+                .unwrap_err(),
+            expected
+        );
+    }
+}
+
+#[tokio::test]
+async fn rejects_invalid_track_catalogs() {
+    let metadata = metadata().await;
+    let source = selected_source();
     let mut missing_url = catalog(vec![track(SUBTITLE_URL, "zh-CN")]);
     missing_url["data"]["subtitle"]["subtitles"][0]
         .as_object_mut()
@@ -163,7 +198,6 @@ async fn rejects_mismatched_cid_and_invalid_track_catalogs() {
         .remove("subtitle_url");
 
     for (body, expected) in [
-        (wrong_cid, SubtitleError::InvalidCatalog),
         (
             missing_url,
             SubtitleError::Request(RequestError::InvalidResponse),
@@ -287,6 +321,25 @@ async fn both_requests_have_deadlines_and_byte_budgets() {
         .unwrap_err(),
         SubtitleError::Request(RequestError::TooLarge)
     );
+}
+
+#[tokio::test]
+async fn bounds_cue_end_by_the_selected_pages_integer_second_duration() {
+    let selected = discovered_track().await;
+    let response = |to| reply(json!({"body":[{"from":59.5,"to":to,"content":"合成"}]}));
+    let cues = fetch_subtitle_with(&selected, |_| ready(Ok(response(60.0))))
+        .await
+        .unwrap();
+    assert_eq!((cues[0].start_ms, cues[0].end_ms), (59_500, 60_000));
+
+    for to in [60.0004, 60.001, 61.0] {
+        assert_eq!(
+            fetch_subtitle_with(&selected, |_| ready(Ok(response(to))))
+                .await
+                .unwrap_err(),
+            SubtitleError::InvalidSubtitle
+        );
+    }
 }
 
 #[tokio::test]

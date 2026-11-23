@@ -4,7 +4,7 @@ use std::fmt;
 use std::future::Future;
 
 use reqwest::{Response, Url};
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use thiserror::Error;
 
 use super::BilibiliSource;
@@ -34,6 +34,7 @@ pub struct SubtitleTrack {
     url: Url,
     language: String,
     label: String,
+    duration_ms: u64,
 }
 
 impl SubtitleTrack {
@@ -114,6 +115,7 @@ where
                 url: subtitle_url(&track.subtitle_url)?,
                 language: track.lan,
                 label: track.lan_doc,
+                duration_ms: page.duration_ms,
             })
         })
         .collect()
@@ -142,11 +144,15 @@ where
         return Err(SubtitleError::InvalidSubtitle);
     }
 
+    let duration_seconds = track.duration_ms as f64 / 1000.0;
     let mut previous_start = 0;
     document
         .body
         .into_iter()
         .map(|cue| {
+            if cue.to > duration_seconds {
+                return Err(SubtitleError::InvalidSubtitle);
+            }
             let start_ms = timestamp_ms(cue.from)?;
             let end_ms = timestamp_ms(cue.to)?;
             if end_ms <= start_ms
@@ -168,8 +174,15 @@ where
 
 #[derive(Deserialize)]
 struct Player {
+    #[serde(default, deserialize_with = "deserialize_present_cid")]
     cid: Option<u64>,
     subtitle: TrackList,
+}
+
+fn deserialize_present_cid<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<u64>, D::Error> {
+    u64::deserialize(deserializer).map(Some)
 }
 
 #[derive(Deserialize)]
