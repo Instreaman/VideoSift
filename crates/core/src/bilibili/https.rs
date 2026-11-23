@@ -6,17 +6,17 @@ use tokio::net::lookup_host;
 use tokio::sync::Mutex;
 use tokio::time::Instant;
 
-use super::{DEADLINE, HOST, MetadataError};
+use super::request::{DEADLINE, RequestError, destination_allowed};
 
 static LAST_START: Mutex<Option<Instant>> = Mutex::const_new(None);
 
-async fn claim_request_slot(last: &Mutex<Option<Instant>>) -> Result<(), MetadataError> {
+async fn claim_request_slot(last: &Mutex<Option<Instant>>) -> Result<(), RequestError> {
     let mut previous = last.lock().await;
     let now = Instant::now();
     if let Some(start) = *previous {
         let remaining = Duration::from_secs(1).saturating_sub(now - start);
         if !remaining.is_zero() {
-            return Err(MetadataError::RateLimited {
+            return Err(RequestError::RateLimited {
                 retry_after: Some(remaining),
             });
         }
@@ -25,51 +25,43 @@ async fn claim_request_slot(last: &Mutex<Option<Instant>>) -> Result<(), Metadat
     Ok(())
 }
 
-pub(super) async fn get(url: Url) -> Result<Response, MetadataError> {
-    if url.host_str() != Some(HOST)
-        || url.scheme() != "https"
-        || url.port_or_known_default() != Some(443)
-    {
-        return Err(MetadataError::Destination);
-    }
+pub(super) async fn get(url: Url) -> Result<Response, RequestError> {
+    let host = url
+        .host_str()
+        .filter(|_| destination_allowed(&url))
+        .ok_or(RequestError::Destination)?;
     claim_request_slot(&LAST_START).await?;
-    let resolved = lookup_host((HOST, 443))
+    let resolved = lookup_host((host, 443))
         .await
-        .map_err(|_| MetadataError::Transport)?;
+        .map_err(|_| RequestError::Transport)?;
     let addresses = destination_addresses(resolved)?;
     let client = Client::builder()
         .https_only(true)
         .no_proxy()
         .redirect(Policy::none())
         .retry(reqwest::retry::never())
-        .resolve_to_addrs(HOST, &addresses)
+        .resolve_to_addrs(host, &addresses)
         .timeout(DEADLINE)
         .build()
-        .map_err(|_| MetadataError::Transport)?;
-    client.get(url).send().await.map_err(|e| {
-        if e.is_timeout() {
-            MetadataError::Timeout
-        } else {
-            MetadataError::Transport
-        }
-    })
+        .map_err(|_| RequestError::Transport)?;
+    client.get(url).send().await.map_err(RequestError::from)
 }
 
 /// Pin exactly the checked IPv4 addresses; never delegate a second lookup to the client.
 fn destination_addresses(
     resolved: impl Iterator<Item = SocketAddr>,
-) -> Result<Vec<SocketAddr>, MetadataError> {
+) -> Result<Vec<SocketAddr>, RequestError> {
     let mut allowed = Vec::new();
     for addr in resolved {
         if let SocketAddr::V4(v4) = addr {
             if !public_ipv4(*v4.ip()) {
-                return Err(MetadataError::Destination);
+                return Err(RequestError::Destination);
             }
             allowed.push(addr);
         }
     }
     if allowed.is_empty() {
-        return Err(MetadataError::Destination);
+        return Err(RequestError::Destination);
     }
     Ok(allowed)
 }
@@ -101,7 +93,7 @@ mod tests {
         claim_request_slot(&last).await.unwrap();
         assert_eq!(
             claim_request_slot(&last).await,
-            Err(MetadataError::RateLimited {
+            Err(RequestError::RateLimited {
                 retry_after: Some(Duration::from_secs(1))
             })
         );
@@ -129,7 +121,7 @@ mod tests {
             let denied = SocketAddr::new(host.parse().unwrap(), 443);
             assert_eq!(
                 destination_addresses([public, denied].into_iter()),
-                Err(MetadataError::Destination)
+                Err(RequestError::Destination)
             );
         }
         let v6 = "[::1]:443".parse().unwrap();
@@ -139,7 +131,7 @@ mod tests {
         );
         assert_eq!(
             destination_addresses([v6].into_iter()),
-            Err(MetadataError::Destination)
+            Err(RequestError::Destination)
         );
     }
 }

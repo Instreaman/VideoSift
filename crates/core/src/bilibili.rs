@@ -1,6 +1,11 @@
 //! Bilibili input parsing, metadata retrieval and page selection.
 
+mod https;
 pub mod metadata;
+mod request;
+pub mod subtitles;
+
+pub use request::RequestError;
 
 use serde::Serialize;
 use thiserror::Error;

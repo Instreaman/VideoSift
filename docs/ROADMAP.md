@@ -3,7 +3,8 @@
 每阶段：读取规范 → 检查工作区/远程 → 阶段分支 → 实现 → 实测 → 文档/审查 →
 Commit/同步/PR/CI → 等待用户验收。不得未经验收进入下一阶段，不自动合并 main。
 Phase 0、Phase 01 及 Phase 02 首项 [Bilibili 离线输入与分 P 校验](BILIBILI_INPUT.md)已验收。
-Phase 02 第二项[本地文件来源校验](LOCAL_INPUT.md)已验收。第三项[Bilibili 元数据获取与分 P 校验](BILIBILI_METADATA.md)已实现，等待验收。平台兼容性仍待另行授权后验证。
+Phase 02 第二项[本地文件来源校验](LOCAL_INPUT.md)和第三项[Bilibili 元数据获取与分 P 校验](BILIBILI_METADATA.md)已验收。
+第四项[Bilibili 字幕发现与获取](BILIBILI_SUBTITLES.md)已实现，等待验收。平台兼容性仍待另行授权后验证。
 
 | Phase | 交付边界 | 进入/验收标准 |
 | --- | --- | --- |
