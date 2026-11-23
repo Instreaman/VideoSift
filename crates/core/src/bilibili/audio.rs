@@ -24,7 +24,7 @@ pub enum AudioError {
     ProtectedMedia,
     #[error("Bilibili did not offer a supported audio track")]
     NoSupportedAudio,
-    #[error("The downloaded audio lacks a valid MP4 file or segment header")]
+    #[error("The downloaded audio has incomplete or invalid MP4 boxes")]
     InvalidAudio,
 }
 
@@ -97,16 +97,51 @@ where
     Fut: Future<Output = Result<Response, RequestError>>,
 {
     let audio = request::fetch(get, track.url.clone(), AUDIO_LIMIT).await?;
-    let [a, b, c, d, kind @ ..] = audio.as_slice() else {
-        return Err(AudioError::InvalidAudio);
-    };
-    let header_size = u32::from_be_bytes([*a, *b, *c, *d]) as usize;
-    if !(16..audio.len()).contains(&header_size)
-        || !matches!(kind.get(..4), Some(b"ftyp" | b"styp"))
-    {
+    validate_audio_boxes(&audio)?;
+    Ok(audio)
+}
+
+fn validate_audio_boxes(audio: &[u8]) -> Result<(), AudioError> {
+    let mut remaining = audio;
+    let mut has_media = false;
+    while !remaining.is_empty() {
+        let (size, rest) = remaining
+            .split_first_chunk::<4>()
+            .ok_or(AudioError::InvalidAudio)?;
+        let (kind, rest) = rest
+            .split_first_chunk::<4>()
+            .ok_or(AudioError::InvalidAudio)?;
+        let (size, mut header_len) = match u32::from_be_bytes(*size) {
+            0 => (remaining.len(), 8),
+            1 => {
+                let large_size = rest.first_chunk::<8>().ok_or(AudioError::InvalidAudio)?;
+                let size = usize::try_from(u64::from_be_bytes(*large_size))
+                    .map_err(|_| AudioError::InvalidAudio)?;
+                (size, 16)
+            }
+            size => (size as usize, 8),
+        };
+        if kind == b"uuid" {
+            header_len += 16;
+        }
+        let (current, tail) = remaining
+            .split_at_checked(size)
+            .ok_or(AudioError::InvalidAudio)?;
+        let payload = current.get(header_len..).ok_or(AudioError::InvalidAudio)?;
+        if remaining.len() == audio.len()
+            && (!matches!(kind, b"ftyp" | b"styp")
+                || payload.len() < 8
+                || !payload.len().is_multiple_of(4))
+        {
+            return Err(AudioError::InvalidAudio);
+        }
+        has_media |= kind == b"mdat" && !payload.is_empty();
+        remaining = tail;
+    }
+    if !has_media {
         return Err(AudioError::InvalidAudio);
     }
-    Ok(audio)
+    Ok(())
 }
 
 #[derive(Deserialize)]

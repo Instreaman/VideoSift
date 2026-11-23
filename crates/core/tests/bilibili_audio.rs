@@ -1,3 +1,6 @@
+#[path = "support/streaming_response.rs"]
+mod streaming_response;
+
 use std::future::{pending, ready};
 use std::time::Duration;
 
@@ -250,6 +253,72 @@ async fn rejects_empty_truncated_and_non_mp4_bodies() {
             .await
             .unwrap_err();
         assert_eq!(error, AudioError::InvalidAudio);
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn rejects_manifest_and_unknown_length_audio_one_byte_over_budget() {
+    let (metadata, source) = selected().await;
+    let absent = absence(&metadata, &source).await;
+    let candidate = audio_track().await;
+    let manifest = streaming_response::streaming_response(1024 * 1024 + 1);
+    let audio = streaming_response::streaming_response(32 * 1024 * 1024 + 1);
+    assert_eq!(manifest.content_length(), None);
+    assert_eq!(audio.content_length(), None);
+    assert_eq!(
+        resolve_audio_with(&absent, |_| ready(Ok(manifest)))
+            .await
+            .unwrap_err(),
+        AudioError::Request(RequestError::TooLarge)
+    );
+    assert_eq!(
+        fetch_audio_with(&candidate, |_| ready(Ok(audio)))
+            .await
+            .unwrap_err(),
+        AudioError::Request(RequestError::TooLarge)
+    );
+}
+
+#[tokio::test]
+async fn rejects_incomplete_top_level_boxes_and_missing_media_data() {
+    let track = audio_track().await;
+    let file_type = &AUDIO_BODY[..16];
+    for body in [
+        AUDIO_BODY[..17].to_vec(),
+        AUDIO_BODY[..AUDIO_BODY.len() - 1].to_vec(),
+        [AUDIO_BODY, b"x"].concat(),
+        [AUDIO_BODY, b"\0\0\0\x0cfreeabc"].concat(),
+        [file_type, b"\0\0\0\x08free"].concat(),
+        [file_type, b"\0\0\0\x08mdat"].concat(),
+        [file_type, b"\0\0\0\x07mdat"].concat(),
+        [file_type, b"\0\0\0\x01mdat\0"].concat(),
+        [file_type, b"\0\0\0\x01mdat", &[0xff; 8]].concat(),
+        [AUDIO_BODY, b"\0\0\0\x08uuid"].concat(),
+    ] {
+        assert_eq!(
+            fetch_audio_with(&track, |_| ready(Ok(Response::new(body).into())))
+                .await
+                .unwrap_err(),
+            AudioError::InvalidAudio
+        );
+    }
+}
+
+#[tokio::test]
+async fn accepts_complete_multi_box_extended_and_to_end_media() {
+    let track = audio_track().await;
+    for media in [
+        b"\0\0\0\x01mdat\0\0\0\0\0\0\0\x11x\0\0\0\x08free".as_slice(),
+        b"\0\0\0\0mdatx",
+    ] {
+        let body = [&AUDIO_BODY[..16], b"\0\0\0\x08free", media].concat();
+        let response = Response::new(body.clone()).into();
+        assert_eq!(
+            fetch_audio_with(&track, |_| ready(Ok(response)))
+                .await
+                .unwrap(),
+            body
+        );
     }
 }
 
