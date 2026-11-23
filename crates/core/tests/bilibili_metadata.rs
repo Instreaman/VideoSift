@@ -1,3 +1,6 @@
+#[path = "support/streaming_response.rs"]
+mod streaming_response;
+
 use std::future::{pending, ready};
 use std::time::Duration;
 
@@ -246,29 +249,10 @@ async fn rejects_oversized_or_invalid_json_bodies() {
     }
 }
 
-/// An unknown-length body that sends fixed chunks and then stalls.
-struct SlowBody(usize);
-
-impl http_body::Body for SlowBody {
-    type Data = &'static [u8];
-    type Error = std::convert::Infallible;
-
-    fn poll_frame(
-        mut self: std::pin::Pin<&mut Self>,
-        _: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
-        if self.0 == 0 {
-            return std::task::Poll::Pending;
-        }
-        self.0 -= 1;
-        std::task::Poll::Ready(Some(Ok(http_body::Frame::data(&[0; 8192]))))
-    }
-}
-
 #[tokio::test(start_paused = true)]
 async fn enforces_byte_budget_and_deadline_while_reading_an_unknown_length_body() {
     for (chunks, expected) in [(129, MetadataError::TooLarge), (1, MetadataError::Timeout)] {
-        let response = Response::new(reqwest::Body::wrap(SlowBody(chunks))).into();
+        let response = streaming_response::streaming_response(chunks * 8192);
         assert_eq!(
             fetch_metadata_with(BV, None, |_| ready(Ok(response)))
                 .await

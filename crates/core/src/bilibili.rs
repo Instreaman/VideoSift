@@ -1,5 +1,6 @@
-//! Bilibili input parsing, metadata retrieval and page selection.
+//! Bilibili input, page metadata, subtitles and audio fallback.
 
+pub mod audio;
 mod https;
 pub mod metadata;
 mod request;

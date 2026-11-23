@@ -3,7 +3,7 @@
 Rust core 通过 `bilibili::subtitles` 提供轨道发现和正文获取。这两个操作各有可注入传输的
 `discover_subtitles_with`、`fetch_subtitle_with`，供 Mock 测试使用。对应的
 `discover_authorized_subtitles`、`fetch_authorized_subtitle` 须由调用方先取得真实访问授权。
-当前 CLI 未接入，音轨回退留待后续授权。
+当前 CLI 未接入。显式无字幕的结果可交给[音轨回退](BILIBILI_AUDIO.md)。
 
 ## 从分 P 到字幕轨道
 
