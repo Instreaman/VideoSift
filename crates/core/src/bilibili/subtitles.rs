@@ -4,7 +4,7 @@ use std::fmt;
 use std::future::Future;
 
 use reqwest::{Response, Url};
-use serde::{Deserialize, Deserializer};
+use serde::Deserialize;
 use thiserror::Error;
 
 use super::BilibiliSource;
@@ -55,6 +55,25 @@ impl fmt::Debug for SubtitleTrack {
     }
 }
 
+/// Proof that discovery succeeded and explicitly reported no tracks for this page.
+#[derive(Debug)]
+pub struct ConfirmedNoSubtitles<'a> {
+    source_id: &'a str,
+    cid: u64,
+}
+
+impl<'a> ConfirmedNoSubtitles<'a> {
+    pub(super) fn page(&self) -> (&'a str, u64) {
+        (self.source_id, self.cid)
+    }
+}
+
+#[derive(Debug)]
+pub enum SubtitleAvailability<'a> {
+    Available(Vec<SubtitleTrack>),
+    Absent(ConfirmedNoSubtitles<'a>),
+}
+
 /// A source cue on the selected page's timeline. Text is untrusted input.
 #[derive(Debug, PartialEq, Eq)]
 pub struct SubtitleCue {
@@ -81,6 +100,30 @@ where
     F: FnOnce(Url) -> Fut,
     Fut: Future<Output = Result<Response, RequestError>>,
 {
+    match discover_subtitle_availability_with(metadata, source, get).await? {
+        SubtitleAvailability::Available(tracks) => Ok(tracks),
+        SubtitleAvailability::Absent(_) => Ok(Vec::new()),
+    }
+}
+
+/// Discovers subtitle availability over HTTPS after the caller grants live access.
+pub async fn discover_authorized_subtitle_availability<'a>(
+    metadata: &'a VideoMetadata,
+    source: &BilibiliSource<'_>,
+) -> Result<SubtitleAvailability<'a>, SubtitleError> {
+    discover_subtitle_availability_with(metadata, source, super::https::get).await
+}
+
+/// A successful, explicitly empty subtitle list permits audio fallback for the same page.
+pub async fn discover_subtitle_availability_with<'a, F, Fut>(
+    metadata: &'a VideoMetadata,
+    source: &BilibiliSource<'_>,
+    get: F,
+) -> Result<SubtitleAvailability<'a>, SubtitleError>
+where
+    F: FnOnce(Url) -> Fut,
+    Fut: Future<Output = Result<Response, RequestError>>,
+{
     let page = source
         .part_id
         .checked_sub(1)
@@ -100,7 +143,14 @@ where
         return Err(SubtitleError::InvalidCatalog);
     }
 
-    player
+    if player.subtitle.subtitles.is_empty() {
+        return Ok(SubtitleAvailability::Absent(ConfirmedNoSubtitles {
+            source_id: metadata.source_id(),
+            cid: page.cid,
+        }));
+    }
+
+    let tracks = player
         .subtitle
         .subtitles
         .into_iter()
@@ -112,13 +162,14 @@ where
                 return Err(SubtitleError::InvalidCatalog);
             }
             Ok(SubtitleTrack {
-                url: subtitle_url(&track.subtitle_url)?,
+                url: request::download_url(&track.subtitle_url, request::subtitle_destination)?,
                 language: track.lan,
                 label: track.lan_doc,
                 duration_ms: page.duration_ms,
             })
         })
-        .collect()
+        .collect::<Result<Vec<_>, SubtitleError>>()?;
+    Ok(SubtitleAvailability::Available(tracks))
 }
 
 /// Retrieves one previously discovered track over HTTPS with caller authorization.
@@ -174,15 +225,9 @@ where
 
 #[derive(Deserialize)]
 struct Player {
-    #[serde(default, deserialize_with = "deserialize_present_cid")]
+    #[serde(default, deserialize_with = "request::deserialize_present_cid")]
     cid: Option<u64>,
     subtitle: TrackList,
-}
-
-fn deserialize_present_cid<'de, D: Deserializer<'de>>(
-    deserializer: D,
-) -> Result<Option<u64>, D::Error> {
-    u64::deserialize(deserializer).map(Some)
 }
 
 #[derive(Deserialize)]
@@ -214,29 +259,6 @@ fn valid_language(language: &str) -> bool {
         && language
             .split('-')
             .all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_alphanumeric()))
-}
-
-fn subtitle_url(raw: &str) -> Result<Url, RequestError> {
-    if raw.len() > 4096
-        || raw
-            .bytes()
-            .any(|b| b.is_ascii_control() || matches!(b, b' ' | b'\\'))
-    {
-        return Err(RequestError::Destination);
-    }
-    let path = raw
-        .strip_prefix("https://")
-        .or_else(|| raw.strip_prefix("//"))
-        .ok_or(RequestError::Destination)?;
-    let (authority, _) = path.split_once('/').ok_or(RequestError::Destination)?;
-    let url = Url::parse(&format!("https://{path}")).map_err(|_| RequestError::Destination)?;
-    if !matches!(url.host_str(), Some(host) if authority.eq_ignore_ascii_case(host))
-        || url.host_str() == Some(request::API_HOST)
-        || !request::destination_allowed(&url)
-    {
-        return Err(RequestError::Destination);
-    }
-    Ok(url)
 }
 
 fn timestamp_ms(seconds: f64) -> Result<u64, SubtitleError> {

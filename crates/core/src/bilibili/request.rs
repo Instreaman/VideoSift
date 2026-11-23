@@ -2,7 +2,7 @@ use std::future::Future;
 use std::time::{Duration, SystemTime};
 
 use reqwest::{Response, Url, header::RETRY_AFTER};
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use serde_json::value::RawValue;
 use thiserror::Error;
 
@@ -53,14 +53,31 @@ pub(super) fn destination_allowed(url: &Url) -> bool {
         return false;
     }
     match url.host_str() {
-        Some(API_HOST) => matches!(url.path(), "/x/web-interface/view" | "/x/player/v2"),
-        Some("aisubtitle.hdslb.com") => subtitle_path(url.path(), "/bfs/ai_subtitle/"),
-        Some("i0.hdslb.com") => subtitle_path(url.path(), "/bfs/subtitle/"),
+        Some(API_HOST) => matches!(
+            url.path(),
+            "/x/web-interface/view" | "/x/player/v2" | "/x/player/playurl"
+        ),
+        _ => subtitle_destination(url) || audio_destination(url),
+    }
+}
+
+pub(super) fn subtitle_destination(url: &Url) -> bool {
+    match url.host_str() {
+        Some("aisubtitle.hdslb.com") => download_path(url.path(), "/bfs/ai_subtitle/"),
+        Some("i0.hdslb.com") => download_path(url.path(), "/bfs/subtitle/"),
         _ => false,
     }
 }
 
-fn subtitle_path(path: &str, prefix: &str) -> bool {
+pub(super) fn audio_destination(url: &Url) -> bool {
+    matches!(
+        url.host_str(),
+        Some("upos-sz-mirrorcos.bilivideo.com" | "upos-sz-mirrorali.bilivideo.com")
+    ) && url.path().ends_with(".m4s")
+        && download_path(url.path(), "/upgcxcode/")
+}
+
+fn download_path(path: &str, prefix: &str) -> bool {
     path.strip_prefix(prefix).is_some_and(|tail| {
         tail.split('/').all(|component| {
             !matches!(component, "" | "." | "..")
@@ -69,6 +86,38 @@ fn subtitle_path(path: &str, prefix: &str) -> bool {
                     .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'))
         })
     })
+}
+
+pub(super) fn download_url(
+    raw: &str,
+    permits_destination: fn(&Url) -> bool,
+) -> Result<Url, RequestError> {
+    if raw.len() > 4096
+        || raw
+            .bytes()
+            .any(|b| b.is_ascii_control() || matches!(b, b' ' | b'\\'))
+    {
+        return Err(RequestError::Destination);
+    }
+    let path = raw
+        .strip_prefix("https://")
+        .or_else(|| raw.strip_prefix("//"))
+        .ok_or(RequestError::Destination)?;
+    let (authority, _) = path.split_once('/').ok_or(RequestError::Destination)?;
+    let url = Url::parse(&format!("https://{path}")).map_err(|_| RequestError::Destination)?;
+    if !matches!(url.host_str(), Some(host) if authority.eq_ignore_ascii_case(host))
+        || url.fragment().is_some()
+        || !permits_destination(&url)
+    {
+        return Err(RequestError::Destination);
+    }
+    Ok(url)
+}
+
+pub(super) fn deserialize_present_cid<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<u64>, D::Error> {
+    u64::deserialize(deserializer).map(Some)
 }
 
 pub(super) async fn fetch<F, Fut, E>(get: F, url: Url, limit: usize) -> Result<Vec<u8>, E>
