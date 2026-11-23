@@ -5,7 +5,7 @@ Commit/同步/PR/CI → 等待用户验收。不得未经验收进入下一阶�
 Phase 0、Phase 01 及 Phase 02 首项 [Bilibili 离线输入与分 P 校验](BILIBILI_INPUT.md)已验收。
 Phase 02 第二项[本地文件来源校验](LOCAL_INPUT.md)和第三项[Bilibili 元数据获取与分 P 校验](BILIBILI_METADATA.md)已验收。
 第四项[Bilibili 字幕发现与获取](BILIBILI_SUBTITLES.md)已验收。
-第五项[Bilibili 无字幕时的音轨回退](BILIBILI_AUDIO.md)已实现，等待验收。平台兼容性仍待另行授权后验证。
+第五项[Bilibili 无字幕时的音轨回退](BILIBILI_AUDIO.md)已验收。平台兼容性仍待另行授权后验证。
 
 | Phase | 交付边界 | 进入/验收标准 |
 | --- | --- | --- |
