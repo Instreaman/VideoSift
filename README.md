@@ -7,16 +7,24 @@ an Avalonia desktop client and isolated Python inference workers.
 
 ## Status
 
-**Phase 01 is complete. The first two Phase 02 source features have been accepted and merged into `main`.**
-Both are available through the Rust core library.
+**Phase 01 is complete. The first five Phase 02 source features have been accepted and merged into `main`.**
+These features are available through the Rust core library.
 
 - **Bilibili input.** Parse a BV identifier or a standard playback URL offline. Page validation requires a
   caller-supplied catalog. For a multi-page video, the caller must choose a page explicitly. [Input and page selection](docs/BILIBILI_INPUT.md)
 - **Local file input.** Validate a selected, nonempty regular file under a caller-authorized directory.
   Its BLAKE3 content digest identifies the source across renames and copies. Media format and playability checks are planned. [File validation and platform limits](docs/LOCAL_INPUT.md)
+- **Bilibili metadata.** Fetch metadata over restricted HTTPS and validate the page selection against the
+  returned catalog. A multi-page video still requires an explicit choice. [Metadata behavior and limits](docs/BILIBILI_METADATA.md)
+- **Bilibili subtitles.** Discover subtitle tracks for the selected page, fetch the caller-selected track and
+  validate its timestamps against the page duration. [Subtitle discovery and retrieval](docs/BILIBILI_SUBTITLES.md)
+- **Bilibili audio fallback.** Only a successful subtitle discovery response with an explicit empty list
+  enables fallback for the same page. The core can fetch one AAC-LC DASH audio track over restricted HTTPS,
+  checking that every top-level MP4 box is complete and that at least one media data box (`mdat`) is nonempty.
+  [Audio fallback and limits](docs/BILIBILI_AUDIO.md)
 
-The third Phase 02 item adds a metadata request to the Rust core and validates page selection against the response.
-It is under review. Tests use a mock transport and synthetic catalogs. [Metadata behavior and limits](docs/BILIBILI_METADATA.md)
+Bilibili network tests use mock responses and synthetic data. Live access requires separate authorization.
+Live platform compatibility and audio decodability remain unverified.
 
 The standalone Rust CLI runs a synthetic task with a Mock Worker and Mock Provider. The first-run example
 shows how to run it twice in the same private data directory and check for cache hits on the second run. [CLI quick start](docs/CLI.md)
@@ -31,9 +39,9 @@ Present in this repository:
 
 See [SQLite task storage](docs/STORAGE.md), [process supervision](docs/PROCESS_SUPERVISION.md), [bounded Mock scheduling](docs/SCHEDULER.md), [task state rules](docs/TASK_STATE.md) and [Rust checks](CONTRIBUTING.md).
 
-Planned: Bilibili subtitle and audio retrieval and media inspection; subtitle-first transcription; ASR/OCR;
-timestamped evidence; Fast/Standard/Deep processing; Codex CLI summaries; integrated
-transcript search; native desktop UI; measured acceleration.
+Planned work includes media probing and decoding, a subtitle-first transcript pipeline with local speech
+recognition, keyframe extraction and OCR, knowledge notes with timestamped evidence, Fast/Standard/Deep processing, Codex CLI
+summaries, integrated transcript search, a native desktop UI and measured acceleration.
 
 ## Validate Phase 0
 

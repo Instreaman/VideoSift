@@ -6,13 +6,20 @@
 
 ## 当前状态
 
-**Phase 01 已完成。Phase 02 的前两项来源功能已验收并合并至 `main`。**
-这两项功能均通过 Rust 核心库提供。
+**Phase 01 已完成。Phase 02 的前五项来源功能已验收并合并至 `main`。**
+这些功能均通过 Rust 核心库提供。
 
 - **Bilibili 输入。** 离线解析 BV 号或标准播放页 URL。校验分 P 需要调用方提供分 P 目录。遇到多 P 视频时，须明确选择目标页。[输入规则与分 P 选择](docs/BILIBILI_INPUT.md)
 - **本地文件输入。** 校验调用方在授权目录下选定的非空普通文件，以文件内容的 BLAKE3 摘要作为来源标识。改名或复制后，相同内容保留同一标识。媒体格式与可播放性检查属于后续工作。[文件校验与平台限制](docs/LOCAL_INPUT.md)
+- **Bilibili 元数据。** 通过受限 HTTPS 获取元数据，按返回的目录校验分 P 选择。多 P 视频仍须明确选择目标页。
+  [元数据行为与限制](docs/BILIBILI_METADATA.md)
+- **Bilibili 字幕。** 发现所选分 P 的字幕轨道，获取调用方选定的字幕，并按该分 P 的时长校验时间轴。
+  [字幕发现与获取](docs/BILIBILI_SUBTITLES.md)
+- **Bilibili 音轨回退。** 仅在字幕发现成功且明确返回空列表时，才允许对同一分 P 回退。
+  核心可通过受限 HTTPS 获取一条 AAC-LC DASH 音轨，检查每个顶层 MP4 box 是否完整，
+  并要求至少一个媒体数据 box（`mdat`）含有正文。[音轨回退与限制](docs/BILIBILI_AUDIO.md)
 
-Phase 02 第三项在 Rust 核心库中加入元数据请求，并根据响应校验分 P 选择，当前等待验收。测试使用 Mock 传输和合成目录。[元数据行为与限制](docs/BILIBILI_METADATA.md)
+Bilibili 网络测试使用 Mock 响应和合成数据。访问真实平台需要另行授权。平台兼容性与音频可解码性仍待验证。
 
 独立 Rust CLI 使用 Mock Worker 和 Mock Provider 运行合成任务。首次运行示例演示如何在同一私有数据目录连续运行两次，并查看第二次运行的缓存命中结果。[CLI 使用说明](docs/CLI.md)
 
@@ -20,7 +27,8 @@ Phase 02 第三项在 Rust 核心库中加入元数据请求，并根据响应�
 
 Rust core 已提供分阶段缓存和[中文子串检索对照实验](docs/CACHE_SEARCH.md)。
 
-计划实现（Planned）：Bilibili 字幕和音轨获取与媒体探测、字幕优先与本地语音识别、关键帧与文字识别、带时间戳证据的知识笔记、Fast/Standard/Deep 模式、Codex CLI 总结、字幕检索接入、原生桌面及实测硬件优化。
+后续计划包括媒体探测与解码、字幕优先并可回退到本地语音识别的转写流程、关键帧提取与文字识别、
+带时间戳证据的知识笔记、Fast/Standard/Deep 模式、Codex CLI 总结、转写文本检索接入、原生桌面及基于实测的加速。
 
 已提供 Rust core 库的任务状态转换、状态字段序列化、[有界 Mock 调度](docs/SCHEDULER.md)和[进程监管](docs/PROCESS_SUPERVISION.md)。规则和边界见
 [任务状态机](docs/TASK_STATE.md)和 [SQLite 任务存储](docs/STORAGE.md)，构建检查见 [开发说明](CONTRIBUTING.md)。
