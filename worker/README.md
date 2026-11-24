@@ -23,3 +23,6 @@ ProcessSupervisor 发起一次握手探测。Rust 从派发前计时，五秒内
 成功后关闭 stdin，等待正常退出；失败则请求清理进程树，确认回收后才返回协议错误。
 本项提供短生命周期探测，能力列表为空。集成测试使用锁定的 Worker 环境，先执行
 `uv sync --project worker --locked`，再执行 `cargo test -p videosift-core --test worker`。
+
+Rust 以 LF 区分 stdout 帧，每帧含 LF 最多 1 MiB。收到握手响应后关闭 stdin，继续读取至 EOF。
+此探测没有关联任务，后续 stdout 仅接受 task_id 为空的 process.exiting 通知；stderr 分块排空。
