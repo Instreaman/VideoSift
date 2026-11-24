@@ -1,7 +1,7 @@
 # IPC 契约草案 0.1.0
 
 IPC = Inter-Process Communication（进程间通信）。这是 JSON-RPC 2.0 的受限 profile，
-不是已实现的通信层。标准依据：[JSON-RPC 2.0](https://www.jsonrpc.org/specification)。
+其中 Python Worker 已实现 stdio 握手子集，见 [Worker 说明](../worker/README.md)。标准依据：[JSON-RPC 2.0](https://www.jsonrpc.org/specification)。
 Schema 为 JSON Schema Draft 2020-12；contracts 是跨语言 DTO 的唯一真源。
 
 ## 信封与传输
