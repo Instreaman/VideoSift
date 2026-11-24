@@ -9,12 +9,16 @@ from threading import Timer
 
 
 def main() -> int:
-    if len(sys.argv) != 2 or not sys.argv[1].isascii() or not sys.argv[1].isdigit():
+    if len(sys.argv) != 2:
         return 2
     now = time.monotonic_ns()
-    if len(sys.argv[1]) > 20:
+    arg = sys.argv[1]
+    if arg == "--supervised":
+        remaining = 5_000_000_000  # The Rust owner enforces the earlier connection deadline.
+    elif arg.isascii() and arg.isdigit() and len(arg) <= 20:
+        remaining = int(arg) - now
+    else:
         return 2
-    remaining = int(sys.argv[1]) - now
     if not 0 < remaining <= 5_000_000_000:
         return 2
     timer = Timer(remaining / 1e9, os._exit, args=(2,))

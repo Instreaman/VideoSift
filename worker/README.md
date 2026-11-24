@@ -14,3 +14,15 @@ Mock core 可以发送共享样例中的握手请求。成功响应回显请求 
 进程被外部终止时，监管方应检查 OS 退出状态，将尚未收到响应的请求判为失败。
 测试使用独立 Python 子进程、合成输入与 Mock core。执行
 `uv run --project worker --locked python -m pytest -q worker/tests`。
+
+## Rust 监管握手
+
+core 的 `worker::probe_worker` 接收可信 Python 解释器和入口的绝对路径，使用
+ProcessSupervisor 发起一次握手探测。Rust 从派发前计时，五秒内须收到匹配请求的完整响应。
+`--supervised` 表示由 Rust 持有连接期限，Python 自身也有启动后的保护计时。
+成功后关闭 stdin，等待正常退出；失败则请求清理进程树，确认回收后才返回协议错误。
+本项提供短生命周期探测，能力列表为空。集成测试使用锁定的 Worker 环境，先执行
+`uv sync --project worker --locked`，再执行 `cargo test -p videosift-core --test worker`。
+
+Rust 以 LF 区分 stdout 帧，每帧含 LF 最多 1 MiB。收到握手响应后关闭 stdin，继续读取至 EOF。
+此探测没有关联任务，后续 stdout 仅接受 task_id 为空的 process.exiting 通知；stderr 分块排空。
