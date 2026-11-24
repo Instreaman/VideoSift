@@ -167,3 +167,41 @@ def test_connection_owner_expires_stalled_start():
         assert worker.wait(timeout=7) != 0
         assert worker.stdout.read() == b""
         assert 4.8 <= time.monotonic() - start < 7
+
+
+def test_mock_transcription_contract():
+    from scripts.validate_repository import load_validators
+
+    request = next(item["instance"] for item in FIXTURES if item["name"] == "transcribe_request")
+    params = request["params"]
+    valid = {
+        **request,
+        "id": "ok",
+        "params": {
+            **params,
+            "audio": {
+                "artifact_path": "audio/mock.bin",
+                "size_bytes": 3,
+                "content_hash": "6437b3ac38465133ffb63b75273a8db548c558465d79db03fd359c6cd5bd9d85",
+            },
+        },
+    }
+    bad = {**request, "id": "invalid", "params": {**params, "language": 1}}
+    frames = [REQUEST, request, bad, valid]
+    process = subprocess.run(
+        command() + ["--mock-transcribe"],
+        input=b"".join(map(line, frames)),
+        capture_output=True,
+        timeout=10,
+        check=True,
+    )
+    hello, missing, invalid, ok = map(json.loads, process.stdout.splitlines())
+    validator = load_validators()["rpc.schema.json"]
+    for frame in (valid, hello, missing, invalid, ok):
+        validator.validate(frame)
+    assert hello["result"]["capabilities"] == ["inference.transcribe"]
+    assert missing["error"]["code"] == 1003
+    assert missing["error"]["data"]["task_id"] == params["task_id"]
+    assert invalid["id"] == "invalid" and invalid["error"]["code"] == -32602
+    assert ok["id"] == "ok" and ok["result"]["task_id"] == params["task_id"]
+    assert ok["result"]["segments"][0]["confidence"] is None

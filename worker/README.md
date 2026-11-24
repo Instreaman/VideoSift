@@ -26,3 +26,12 @@ ProcessSupervisor 发起一次握手探测。Rust 从派发前计时，五秒内
 
 Rust 以 LF 区分 stdout 帧，每帧含 LF 最多 1 MiB。收到握手响应后关闭 stdin，继续读取至 EOF。
 此探测没有关联任务，后续 stdout 仅接受 task_id 为空的 process.exiting 通知；stderr 分块排空。
+
+## 合成转写
+
+Rust 库入口 `worker::mock_transcribe` 为单次请求启动带 `--mock-transcribe` 的受监管 Worker，
+核对握手能力后发送 `inference.transcribe`。默认握手探测仍使用空能力列表。
+Mock 只识别虚拟引用 `audio/mock.bin`，其内容定义为三个 ASCII 字节 abc，按大小和 BLAKE3 匹配。
+Worker 在内存中匹配引用，不打开文件。每次返回固定的合成 ASR 片段，时间为 0 至 1000 毫秒，
+置信度未知。Rust 校验请求 id、任务、语言及预期合成结果。转写响应期限为 3 秒。
+参数错误返回 -32602，未知虚拟引用返回 1003/source。结果仅在正常退出并完成清理后交付。

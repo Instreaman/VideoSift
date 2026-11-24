@@ -9,7 +9,8 @@ from threading import Timer
 
 
 def main() -> int:
-    if len(sys.argv) != 2:
+    mock = sys.argv[2:] == ["--mock-transcribe"]
+    if len(sys.argv) != 2 and not mock:
         return 2
     now = time.monotonic_ns()
     arg = sys.argv[1]
@@ -25,7 +26,7 @@ def main() -> int:
     timer.start()
     try:
         protocol = runpy.run_path(str(Path(__file__).with_name("protocol.py")))
-        return protocol["serve"](timer)
+        return protocol["serve"](timer, mock)
     except OSError:
         return 2
     finally:

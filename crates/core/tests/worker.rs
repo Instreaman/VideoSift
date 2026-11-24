@@ -100,3 +100,45 @@ async fn rejects_invalid_notification_and_unterminated_tail() {
         assert!(matches!(result, Err(HandshakeError::InvalidResponse)));
     }
 }
+
+#[tokio::test]
+async fn supervised_mock_transcription() {
+    let transcript = videosift_core::worker::mock_transcribe(
+        &python(),
+        &root().join("worker/main.py"),
+        "synthetic_task",
+        "zh-CN",
+    )
+    .await
+    .unwrap();
+    assert_eq!(transcript["segments"][0]["origin"], "asr");
+    assert_eq!(transcript["task_id"], "synthetic_task");
+}
+
+#[tokio::test]
+async fn transcription_errors_are_correlated() {
+    let directory = tempfile::tempdir().unwrap();
+    let entry = directory.path().join("mock.py");
+    let setup = r#"import sys,json
+sys.stdin.readline()
+print(json.dumps(dict(jsonrpc="2.0",id="hello",result=dict(protocol_version="0.1.0",task_id=None,server_name="worker",capabilities=["inference.transcribe"])))),flush=True)
+req=json.loads(sys.stdin.readline())
+data=dict(protocol_version="0.1.0",task_id=req["params"]["task_id"],code="source",message="Unavailable",recoverable=False)
+error=dict(code=1003,message="Unavailable",data=data)
+"#;
+    for id in ["transcribe", "stale"] {
+        std::fs::write(
+            &entry,
+            format!(
+                "{setup}print(json.dumps(dict(jsonrpc='2.0',id='{id}',error=error)),flush=True)"
+            ),
+        )
+        .unwrap();
+        let result = videosift_core::worker::mock_transcribe(&python(), &entry, "test", "en").await;
+        if id == "stale" {
+            assert!(matches!(result, Err(HandshakeError::InvalidResponse)));
+        } else {
+            assert!(matches!(result, Err(HandshakeError::UnknownAudio)));
+        }
+    }
+}

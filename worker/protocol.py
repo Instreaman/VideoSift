@@ -42,7 +42,72 @@ def reject(request_id, code, message, **extra):
     reply(request_id, error={"code": code, "message": message, **extra})
 
 
-def serve(deadline: Timer) -> int:
+class MockAudio(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    artifact_path: Annotated[
+        str,
+        Field(max_length=512, pattern=r"^(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)?$"),
+    ]
+    content_hash: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+    size_bytes: Annotated[int, Field(ge=0, le=9007199254740991)]
+
+
+class Transcribe(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    protocol_version: Literal["0.1.0"]
+    task_id: Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]{1,128}$")]
+    audio: MockAudio
+    language: Annotated[str, Field(min_length=2, max_length=35)]
+
+
+def transcribe(request_id, payload):
+    try:
+        params = Transcribe.model_validate(payload)
+    except ValidationError:
+        reject(request_id, -32602, "Invalid transcription parameters")
+        return
+    # The virtual artifact consists of the three bytes b"abc".
+    if params.audio.model_dump() != {
+        "artifact_path": "audio/mock.bin",
+        "size_bytes": 3,
+        "content_hash": "6437b3ac38465133ffb63b75273a8db548c558465d79db03fd359c6cd5bd9d85",
+    }:
+        message = "Unknown mock audio reference"
+        reject(
+            request_id,
+            1003,
+            message,
+            data={
+                "protocol_version": VERSION,
+                "task_id": params.task_id,
+                "code": "source",
+                "message": message,
+                "recoverable": False,
+            },
+        )
+        return
+    reply(
+        request_id,
+        result={
+            "protocol_version": VERSION,
+            "task_id": params.task_id,
+            "video_id": "mock_video",
+            "language": params.language,
+            "segments": [
+                {
+                    "evidence_id": "mock_segment",
+                    "start_ms": 0,
+                    "end_ms": 1000,
+                    "origin": "asr",
+                    "text": "Mock transcript",
+                    "confidence": None,
+                }
+            ],
+        },
+    )
+
+
+def serve(deadline: Timer, mock: bool) -> int:
     ready = False
     seen = set()
     while line := sys.stdin.buffer.readline(MAX_FRAME + 1):
@@ -81,6 +146,9 @@ def serve(deadline: Timer) -> int:
             reject(request_id, -32600, "Connection request limit reached")
             return 2
         seen.add(request_id)
+        if ready and mock and frame["method"] == "inference.transcribe":
+            transcribe(request_id, frame["params"])
+            continue
         if frame["method"] != "system.handshake":
             if ready:
                 reject(request_id, -32601, "Unknown worker method")
@@ -120,7 +188,7 @@ def serve(deadline: Timer) -> int:
                 "protocol_version": VERSION,
                 "server_name": "worker",
                 "task_id": None,
-                "capabilities": [],
+                "capabilities": ["inference.transcribe"] if mock else [],
             },
         )
         ready = True

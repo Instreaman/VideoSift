@@ -18,21 +18,57 @@ pub enum HandshakeError {
     VersionMismatch,
     #[error("invalid worker handshake response")]
     InvalidResponse,
+    #[error("invalid transcription parameters")]
+    InvalidParams,
+    #[error("unknown mock audio reference")]
+    UnknownAudio,
     #[error("worker exited unexpectedly")]
     UnexpectedExit,
 }
 
 /// Probe a trusted isolated Python environment and Worker entry point, then reap the process.
 pub async fn probe_worker(python: &Path, entry: &Path) -> Result<(), HandshakeError> {
+    session(python, entry, None).await.map(|_| ())
+}
+
+/// Run one synthetic transcription against the virtual audio/mock.bin artifact.
+pub async fn mock_transcribe(
+    python: &Path,
+    entry: &Path,
+    task_id: &str,
+    language: &str,
+) -> Result<Value, HandshakeError> {
+    if task_id.is_empty()
+        || task_id.len() > 128
+        || !task_id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+        || !(2..=35).contains(&language.chars().count())
+    {
+        return Err(HandshakeError::InvalidParams);
+    }
+    session(python, entry, Some((task_id, language)))
+        .await?
+        .ok_or(HandshakeError::InvalidResponse)
+}
+
+async fn session(
+    python: &Path,
+    entry: &Path,
+    transcription: Option<(&str, &str)>,
+) -> Result<Option<Value>, HandshakeError> {
     if !entry.is_absolute() {
         return Err(ProcessError::InvalidProgram.into());
     }
     let mut supervisor = ProcessSupervisor::new(1, 1)?;
     let task = supervisor.submit()?;
-    let spec = ProcessSpec {
+    let mut spec = ProcessSpec {
         program: python.into(),
         args: vec!["-I".into(), entry.into(), "--supervised".into()],
     };
+    if transcription.is_some() {
+        spec.args.push("--mock-transcribe".into());
+    }
     let deadline = Instant::now() + Duration::from_secs(5);
     let execution = supervisor
         .dispatch(
@@ -46,11 +82,34 @@ pub async fn probe_worker(python: &Path, entry: &Path) -> Result<(), HandshakeEr
         )?
         .ok_or(ProcessError::NotManaged)?;
     let mut frames = Frames::default();
-    let mut result =
-        match timeout_at(deadline, exchange(&mut supervisor, execution, &mut frames)).await {
-            Ok(result) if Instant::now() < deadline => result,
-            _ => Err(HandshakeError::Timeout),
+    let mut result = match timeout_at(
+        deadline,
+        exchange(
+            &mut supervisor,
+            execution,
+            &mut frames,
+            transcription.is_some(),
+        ),
+    )
+    .await
+    {
+        Ok(result) if Instant::now() < deadline => result,
+        _ => Err(HandshakeError::Timeout),
+    };
+    let mut transcript = None;
+    if result.is_ok()
+        && let Some((task_id, language)) = transcription
+    {
+        result = match timeout_at(
+            Instant::now() + Duration::from_secs(3),
+            transcribe(&mut supervisor, execution, &mut frames, task_id, language),
+        )
+        .await
+        {
+            Ok(reply) => reply.map(|value| transcript = Some(value)),
+            Err(_) => Err(HandshakeError::Timeout),
         };
+    }
     if result.is_ok() {
         supervisor.close_input(execution)?;
         result = frames.drain(&mut supervisor, execution).await;
@@ -63,7 +122,7 @@ pub async fn probe_worker(python: &Path, entry: &Path) -> Result<(), HandshakeEr
     if report.pipe_failed || report.termination != (Termination::Exited { success: true }) {
         return Err(HandshakeError::UnexpectedExit);
     }
-    Ok(())
+    Ok(transcript)
 }
 
 #[derive(Default)]
@@ -136,6 +195,7 @@ async fn exchange(
     supervisor: &mut ProcessSupervisor,
     execution: Execution,
     frames: &mut Frames,
+    mock: bool,
 ) -> Result<(), HandshakeError> {
     let mut request = serde_json::to_vec(&json!({"jsonrpc":"2.0","id":"hello","method":"system.handshake",
         "params":{"protocol_version":"0.1.0","client_name":"core","task_id":null,"capabilities":[]}})).expect("static JSON");
@@ -145,8 +205,13 @@ async fn exchange(
         .next(supervisor, execution)
         .await?
         .ok_or(HandshakeError::UnexpectedExit)?;
+    let capabilities = if mock {
+        vec!["inference.transcribe"]
+    } else {
+        vec![]
+    };
     if frame
-        == json!({"jsonrpc":"2.0","id":"hello","result":{"server_name":"worker","protocol_version":"0.1.0","task_id":null,"capabilities":[]}})
+        == json!({"jsonrpc":"2.0","id":"hello","result":{"server_name":"worker","protocol_version":"0.1.0","task_id":null,"capabilities":capabilities}})
     {
         return Ok(());
     }
@@ -161,4 +226,47 @@ async fn exchange(
         return Err(HandshakeError::VersionMismatch);
     }
     Err(HandshakeError::InvalidResponse)
+}
+
+async fn transcribe(
+    supervisor: &mut ProcessSupervisor,
+    execution: Execution,
+    frames: &mut Frames,
+    task: &str,
+    language: &str,
+) -> Result<Value, HandshakeError> {
+    let audio = json!({"artifact_path":"audio/mock.bin","size_bytes":3,"content_hash":blake3::hash(b"abc").to_hex().as_str()});
+    let mut request = serde_json::to_vec(
+        &json!({"jsonrpc":"2.0","method":"inference.transcribe","id":"transcribe","params":{
+        "protocol_version":"0.1.0","task_id":task,"language":language,"audio":audio}}),
+    )
+    .expect("JSON values");
+    request.push(b'\n');
+    supervisor.try_send_input(execution, &request)?;
+    let frame = frames
+        .next(supervisor, execution)
+        .await?
+        .ok_or(HandshakeError::UnexpectedExit)?;
+    let envelope = |payload: Value| json!({"jsonrpc":"2.0","id":"transcribe","error":payload});
+    if let Some(message) = frame.pointer("/error/message").and_then(Value::as_str)
+        && (1..=1024).contains(&message.chars().count())
+    {
+        if frame == envelope(json!({"code":-32602,"message":message})) {
+            return Err(HandshakeError::InvalidParams);
+        }
+        if frame
+            == envelope(
+                json!({"code":1003,"message":message,"data":{"protocol_version":"0.1.0","task_id":task,"code":"source","message":message,"recoverable":false}}),
+            )
+        {
+            return Err(HandshakeError::UnknownAudio);
+        }
+    }
+    // This synthetic backend has a single, deterministic reference transcript.
+    let expected = json!({"protocol_version":"0.1.0","task_id":task,"video_id":"mock_video","language":language,
+        "segments":[{"evidence_id":"mock_segment","start_ms":0,"end_ms":1000,"origin":"asr","text":"Mock transcript","confidence":null}]});
+    if frame != json!({"jsonrpc":"2.0","id":"transcribe","result":expected}) {
+        return Err(HandshakeError::InvalidResponse);
+    }
+    Ok(frame["result"].clone())
 }
