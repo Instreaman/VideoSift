@@ -193,29 +193,29 @@ impl Frames {
     }
 }
 
-// Compile only the selected definition, retaining local $defs for its references.
-fn contract_validator(source: &str, definition: &str) -> jsonschema::Validator {
-    let mut schema: Value = serde_json::from_str(source).expect("embedded contract");
-    schema
-        .as_object_mut()
-        .expect("contract object")
-        .remove("oneOf");
-    schema["$ref"] = json!(format!("#/$defs/{definition}"));
-    jsonschema::validator_for(&schema).expect("valid embedded definition")
+// Register both embedded resources so cross-schema references stay offline.
+fn contract_validator(document: &str, definition: &str) -> jsonschema::Validator {
+    let mut options = jsonschema::options();
+    for source in [
+        include_str!("../../../contracts/rpc.schema.json"),
+        include_str!("../../../contracts/domain.schema.json"),
+    ] {
+        let schema: Value = serde_json::from_str(source).expect("embedded contract");
+        let id = schema["$id"].as_str().expect("contract URI").to_owned();
+        options = options.with_resource(id, jsonschema::Resource::from_contents(schema));
+    }
+    let reference = format!(
+        "https://videosift.local/contracts/v0.1/{document}.schema.json#/$defs/{definition}"
+    );
+    options
+        .build(&json!({"$ref":reference}))
+        .expect("valid embedded definition")
 }
 
-static HANDSHAKE: LazyLock<jsonschema::Validator> = LazyLock::new(|| {
-    contract_validator(
-        include_str!("../../../contracts/rpc.schema.json"),
-        "HandshakeResult",
-    )
-});
-static TRANSCRIPT: LazyLock<jsonschema::Validator> = LazyLock::new(|| {
-    contract_validator(
-        include_str!("../../../contracts/domain.schema.json"),
-        "Transcript",
-    )
-});
+static HANDSHAKE: LazyLock<jsonschema::Validator> =
+    LazyLock::new(|| contract_validator("rpc", "HandshakeResult"));
+static TRANSCRIPT: LazyLock<jsonschema::Validator> =
+    LazyLock::new(|| contract_validator("domain", "Transcript"));
 
 fn success_payload<'a>(frame: &'a Value, id: &str) -> Option<&'a Value> {
     if frame.as_object()?.len() != 3 || frame["jsonrpc"] != "2.0" || frame["id"] != id {
