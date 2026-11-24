@@ -121,7 +121,7 @@ async fn transcription_errors_are_correlated() {
     let entry = directory.path().join("mock.py");
     let setup = r#"import sys,json
 sys.stdin.readline()
-print(json.dumps(dict(jsonrpc="2.0",id="hello",result=dict(protocol_version="0.1.0",task_id=None,server_name="worker",capabilities=["inference.transcribe"])))),flush=True)
+print(json.dumps(dict(jsonrpc="2.0",id="hello",result=dict(protocol_version="0.1.0",task_id=None,server_name="worker",capabilities=["inference.transcribe"]))),flush=True)
 req=json.loads(sys.stdin.readline())
 data=dict(protocol_version="0.1.0",task_id=req["params"]["task_id"],code="source",message="Unavailable",recoverable=False)
 error=dict(code=1003,message="Unavailable",data=data)
