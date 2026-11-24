@@ -2,11 +2,21 @@
 
 每阶段：读取规范 → 检查工作区/远程 → 阶段分支 → 实现 → 实测 → 文档/审查 →
 Commit/同步/PR/CI → 等待用户验收。不得未经验收进入下一阶段，不自动合并 main。
-Phase 0、Phase 01 及 Phase 02 首项 [Bilibili 离线输入与分 P 校验](BILIBILI_INPUT.md)已验收。
-Phase 02 第二项[本地文件来源校验](LOCAL_INPUT.md)和第三项[Bilibili 元数据获取与分 P 校验](BILIBILI_METADATA.md)已验收。
-第四项[Bilibili 字幕发现与获取](BILIBILI_SUBTITLES.md)已验收。
-第五项[Bilibili 无字幕时的音轨回退](BILIBILI_AUDIO.md)已验收。平台兼容性仍待另行授权后验证。
-第六项[来源适配整合与整体验证](SOURCE_INTEGRATION.md)已实现，等待验收。
+
+Phase 0 和 Phase 01 已验收。Phase 02 的六项来源功能均已验收并合并至 `main`。
+
+1. [Bilibili 离线输入与分 P 校验](BILIBILI_INPUT.md)
+2. [本地文件来源校验](LOCAL_INPUT.md)
+3. [Bilibili 元数据获取与分 P 校验](BILIBILI_METADATA.md)
+4. [Bilibili 字幕发现与获取](BILIBILI_SUBTITLES.md)
+5. [Bilibili 无字幕时的音轨回退](BILIBILI_AUDIO.md)
+6. [来源适配整合与整体验证](SOURCE_INTEGRATION.md)
+
+来源适配整合复用共享 `VideoSource` 契约和已校验的分 P 目录。协调入口优先返回字幕轨道供调用方选择，
+仅在字幕发现成功且明确返回空列表时解析同一分 P 的音轨。获取正文继续使用已有接口。
+Windows 和 Ubuntu 均通过 8 项整合测试，用合成文件和 Mock HTTP 响应验证路径授权、来源序列化、分 P 选择、
+字幕优先、音轨回退及异常路径。访问真实 Bilibili 平台需要另行授权。
+真实平台兼容性、媒体可播放性、音频可解码性和性能仍待验证。
 
 | Phase | 交付边界 | 进入/验收标准 |
 | --- | --- | --- |
