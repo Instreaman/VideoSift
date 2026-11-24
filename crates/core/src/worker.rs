@@ -1,5 +1,7 @@
+use std::collections::HashSet;
 use std::io::{BufRead, Cursor};
 use std::path::Path;
+use std::sync::LazyLock;
 use std::time::Duration;
 
 use serde_json::{Value, json};
@@ -191,6 +193,37 @@ impl Frames {
     }
 }
 
+// Compile only the selected definition, retaining local $defs for its references.
+fn contract_validator(source: &str, definition: &str) -> jsonschema::Validator {
+    let mut schema: Value = serde_json::from_str(source).expect("embedded contract");
+    schema
+        .as_object_mut()
+        .expect("contract object")
+        .remove("oneOf");
+    schema["$ref"] = json!(format!("#/$defs/{definition}"));
+    jsonschema::validator_for(&schema).expect("valid embedded definition")
+}
+
+static HANDSHAKE: LazyLock<jsonschema::Validator> = LazyLock::new(|| {
+    contract_validator(
+        include_str!("../../../contracts/rpc.schema.json"),
+        "HandshakeResult",
+    )
+});
+static TRANSCRIPT: LazyLock<jsonschema::Validator> = LazyLock::new(|| {
+    contract_validator(
+        include_str!("../../../contracts/domain.schema.json"),
+        "Transcript",
+    )
+});
+
+fn success_payload<'a>(frame: &'a Value, id: &str) -> Option<&'a Value> {
+    if frame.as_object()?.len() != 3 || frame["jsonrpc"] != "2.0" || frame["id"] != id {
+        return None;
+    }
+    frame.get("result")
+}
+
 async fn exchange(
     supervisor: &mut ProcessSupervisor,
     execution: Execution,
@@ -205,13 +238,11 @@ async fn exchange(
         .next(supervisor, execution)
         .await?
         .ok_or(HandshakeError::UnexpectedExit)?;
-    let capabilities = if mock {
-        vec!["inference.transcribe"]
-    } else {
-        vec![]
-    };
-    if frame
-        == json!({"jsonrpc":"2.0","id":"hello","result":{"server_name":"worker","protocol_version":"0.1.0","task_id":null,"capabilities":capabilities}})
+    if let Some(result) = success_payload(&frame, "hello")
+        && HANDSHAKE.is_valid(result)
+        && result["server_name"] == "worker"
+        && let Some(capabilities) = result["capabilities"].as_array()
+        && (!mock || capabilities.iter().any(|cap| cap == "inference.transcribe"))
     {
         return Ok(());
     }
@@ -262,11 +293,27 @@ async fn transcribe(
             return Err(HandshakeError::UnknownAudio);
         }
     }
-    // This synthetic backend has a single, deterministic reference transcript.
-    let expected = json!({"protocol_version":"0.1.0","task_id":task,"video_id":"mock_video","language":language,
-        "segments":[{"evidence_id":"mock_segment","start_ms":0,"end_ms":1000,"origin":"asr","text":"Mock transcript","confidence":null}]});
-    if frame != json!({"jsonrpc":"2.0","id":"transcribe","result":expected}) {
+    let result = success_payload(&frame, "transcribe").ok_or(HandshakeError::InvalidResponse)?;
+    if !TRANSCRIPT.is_valid(result) || result["task_id"] != task || result["language"] != language {
         return Err(HandshakeError::InvalidResponse);
     }
-    Ok(frame["result"].clone())
+    let mut evidence = HashSet::new();
+    let mut previous = 0.0;
+    for segment in result["segments"]
+        .as_array()
+        .ok_or(HandshakeError::InvalidResponse)?
+    {
+        // Schema bounds integer milliseconds to the exactly representable range of f64.
+        let start = segment["start_ms"]
+            .as_f64()
+            .ok_or(HandshakeError::InvalidResponse)?;
+        let end = segment["end_ms"]
+            .as_f64()
+            .ok_or(HandshakeError::InvalidResponse)?;
+        if start < previous || end <= start || !evidence.insert(segment["evidence_id"].as_str()) {
+            return Err(HandshakeError::InvalidResponse);
+        }
+        previous = start;
+    }
+    Ok(result.clone())
 }

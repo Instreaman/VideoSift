@@ -142,3 +142,67 @@ error=dict(code=1003,message="Unavailable",data=data)
         }
     }
 }
+
+#[tokio::test]
+async fn transcribe_negotiates_capabilities_and_validates_real_payloads() {
+    use serde_json::{Value, json};
+    let directory = tempfile::tempdir().unwrap();
+    let entry = directory.path().join("peer.py");
+    let fixtures: Value =
+        serde_json::from_str(include_str!("../../../contracts/examples/valid.json")).unwrap();
+    let response = &fixtures
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["name"] == "transcribe_response")
+        .unwrap()["instance"]["result"];
+    let caps = json!(["test.extra", "inference.transcribe"]);
+    let success = json!({"id":"transcribe","jsonrpc":"2.0","result":response});
+    let mut empty = success.clone();
+    empty["result"]["segments"] = json!([]);
+    let mut bad_time = success.clone();
+    bad_time["result"]["segments"][0]["end_ms"] = json!(0);
+    let mut wrong_task = success.clone();
+    wrong_task["result"]["task_id"] = json!("other");
+    let mut wrong_language = success.clone();
+    wrong_language["result"]["language"] = json!("en");
+    let invalid = json!({"id":"transcribe","jsonrpc":"2.0","error":{"code":-32602,"message":"Invalid params"}});
+    for (abilities, reply, expected) in [
+        (&caps, &success, "ok"),
+        (&caps, &empty, "ok"),
+        (&caps, &wrong_task, "invalid"),
+        (&caps, &wrong_language, "invalid"),
+        (&caps, &bad_time, "invalid"),
+        (&caps, &invalid, "params"),
+        (&json!(["test.extra"]), &success, "missing"),
+    ] {
+        let config = directory.path().join("frames.json");
+        let marker = directory.path().join("received");
+        if marker.exists() {
+            std::fs::remove_file(&marker).unwrap();
+        }
+        let hello = json!({"id":"hello","jsonrpc":"2.0","result":{"protocol_version":"0.1.0","task_id":null,"server_name":"worker","capabilities":abilities}});
+        std::fs::write(config, json!([hello, reply]).to_string()).unwrap();
+        std::fs::write(
+            &entry,
+            r#"import json,sys,pathlib
+root=pathlib.Path(__file__).parent
+hello,reply=json.loads((root/"frames.json").read_text(encoding="utf8"))
+sys.stdin.readline()
+print(json.dumps(hello),flush=True)
+if sys.stdin.readline():
+    (root/"received").touch()
+    print(json.dumps(reply),flush=True)
+"#,
+        )
+        .unwrap();
+        let result =
+            videosift_core::worker::mock_transcribe(&python(), &entry, "task_demo", "zh-CN").await;
+        match expected {
+            "ok" => assert_eq!(result.unwrap(), reply["result"]),
+            "params" => assert!(matches!(result, Err(HandshakeError::InvalidParams))),
+            _ => assert!(matches!(result, Err(HandshakeError::InvalidResponse))),
+        }
+        assert_eq!(marker.exists(), expected != "missing");
+    }
+}

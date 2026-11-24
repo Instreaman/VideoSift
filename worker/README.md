@@ -33,5 +33,5 @@ Rust 库入口 `worker::mock_transcribe` 为单次请求启动带 `--mock-transc
 核对握手能力后发送 `inference.transcribe`。默认握手探测仍使用空能力列表。
 Mock 只识别虚拟引用 `audio/mock.bin`，其内容定义为三个 ASCII 字节 abc，按大小和 BLAKE3 匹配。
 Worker 在内存中匹配引用，不打开文件。每次返回固定的合成 ASR 片段，时间为 0 至 1000 毫秒，
-置信度未知。Rust 校验请求 id、任务、语言及预期合成结果。转写响应期限为 3 秒。
+置信度未知。Rust 按成员关系核对能力，并用嵌入的共享 Transcript Schema 校验实际结果、关联请求 id、任务与语言，检查证据 ID 唯一及片段时间顺序。转写响应期限为 3 秒。
 参数错误返回 -32602，未知虚拟引用返回 1003/source。结果仅在正常退出并完成清理后交付。
