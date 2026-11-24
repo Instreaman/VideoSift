@@ -7,7 +7,7 @@ an Avalonia desktop client and isolated Python inference workers.
 
 ## Status
 
-**Phase 01 is complete. The first five Phase 02 source features have been accepted and merged into `main`.**
+**Phase 01 is complete. All six Phase 02 source features have been accepted and merged into `main`.**
 These features are available through the Rust core library.
 
 - **Bilibili input.** Parse a BV identifier or a standard playback URL offline. Page validation requires a
@@ -22,9 +22,15 @@ These features are available through the Rust core library.
   enables fallback for the same page. The core can fetch one AAC-LC DASH audio track over restricted HTTPS,
   checking that every top-level MP4 box is complete and that at least one media data box (`mdat`) is nonempty.
   [Audio fallback and limits](docs/BILIBILI_AUDIO.md)
+- **Source adapter integration.** Local files and Bilibili use the shared `VideoSource` contract. The Bilibili
+  coordinator uses the validated catalog and selected page to return subtitle tracks for caller selection
+  or to resolve an audio track after confirmed subtitle absence. The caller retrieves the chosen track
+  through the existing APIs. [Source adapter workflow](docs/SOURCE_INTEGRATION.md)
 
-Bilibili network tests use mock responses and synthetic data. Live access requires separate authorization.
-Live platform compatibility and audio decodability remain unverified.
+Integration tests on Windows and Ubuntu use synthetic files and mock HTTP responses to check path
+authorization, source serialization, page selection, request order, and error handling for malformed
+responses, access denial, rate limits and timeouts. Live Bilibili access requires separate authorization.
+Live platform compatibility, media playability, audio decodability and performance remain unverified.
 
 The standalone Rust CLI runs a synthetic task with a Mock Worker and Mock Provider. The first-run example
 shows how to run it twice in the same private data directory and check for cache hits on the second run. [CLI quick start](docs/CLI.md)

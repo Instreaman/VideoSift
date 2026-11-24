@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-**Phase 01 已完成。Phase 02 的前五项来源功能已验收并合并至 `main`。**
+**Phase 01 已完成。Phase 02 的六项来源功能均已验收并合并至 `main`。**
 这些功能均通过 Rust 核心库提供。
 
 - **Bilibili 输入。** 离线解析 BV 号或标准播放页 URL。校验分 P 需要调用方提供分 P 目录。遇到多 P 视频时，须明确选择目标页。[输入规则与分 P 选择](docs/BILIBILI_INPUT.md)
@@ -18,8 +18,13 @@
 - **Bilibili 音轨回退。** 仅在字幕发现成功且明确返回空列表时，才允许对同一分 P 回退。
   核心可通过受限 HTTPS 获取一条 AAC-LC DASH 音轨，检查每个顶层 MP4 box 是否完整，
   并要求至少一个媒体数据 box（`mdat`）含有正文。[音轨回退与限制](docs/BILIBILI_AUDIO.md)
+- **来源适配整合。** 本地文件与 Bilibili 共用 `VideoSource` 契约。Bilibili 协调入口复用已校验的目录和所选分 P，
+  有字幕时返回轨道供调用方选择，明确无字幕时解析音轨。调用方通过已有接口获取所选轨道的正文。
+  [来源适配流程](docs/SOURCE_INTEGRATION.md)
 
-Bilibili 网络测试使用 Mock 响应和合成数据。访问真实平台需要另行授权。平台兼容性与音频可解码性仍待验证。
+Windows 和 Ubuntu 的整合测试使用合成文件及 Mock HTTP 响应，验证路径授权、来源序列化、分 P 选择、请求顺序，
+以及响应格式异常、访问被拒、限流和超时的处理。访问真实 Bilibili 平台需要另行授权。
+真实平台兼容性、媒体可播放性、音频可解码性与性能仍待验证。
 
 独立 Rust CLI 使用 Mock Worker 和 Mock Provider 运行合成任务。首次运行示例演示如何在同一私有数据目录连续运行两次，并查看第二次运行的缓存命中结果。[CLI 使用说明](docs/CLI.md)
 
