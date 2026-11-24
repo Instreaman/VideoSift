@@ -3,6 +3,7 @@
 pub mod bilibili;
 pub mod local_file;
 pub mod task;
+pub mod worker;
 
 pub mod mock;
 pub mod mock_run;
