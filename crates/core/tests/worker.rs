@@ -206,3 +206,92 @@ if sys.stdin.readline():
         assert_eq!(marker.exists(), expected != "missing");
     }
 }
+
+const STALLED_TRANSCRIPTION: &str = r#"import json, pathlib, sys, time
+request = json.loads(sys.stdin.readline())
+def send(request, result):
+    print(json.dumps(dict(jsonrpc="2.0", id=request["id"], result=result)), flush=True)
+send(request, dict(protocol_version="0.1.0", task_id=None, server_name="worker",
+                   capabilities=["inference.transcribe"]))
+request = json.loads(sys.stdin.readline())
+params = request["params"]
+result = dict(protocol_version="0.1.0", task_id=params["task_id"], video_id="mock",
+              language=params["language"], segments=[])
+root = pathlib.Path(__file__).parent
+if (root / "reply-first").exists():
+    send(request, result)
+    sys.stdin.read()
+    (root / "ready").touch()
+else:
+    (root / "ready").touch()
+    sys.stdin.read()
+    send(request, result)
+time.sleep(60)
+"#;
+
+#[tokio::test]
+async fn pre_cancelled_transcription_skips_spawn() {
+    let (_sender, receiver) = tokio::sync::watch::channel(true);
+    let missing = tempfile::tempdir().unwrap().path().join("missing.py");
+    let result = videosift_core::worker::mock_transcribe_cancellable(
+        &missing, &missing, "task", "en", receiver,
+    )
+    .await;
+    assert!(
+        matches!(result, Err(HandshakeError::Cancelled)),
+        "{result:?}"
+    );
+}
+
+#[tokio::test]
+async fn cancellation_rejects_late_and_uncommitted_transcripts() {
+    for reply_first in [false, true] {
+        let directory = tempfile::tempdir().unwrap();
+        let entry = directory.path().join("mock.py");
+        let ready = directory.path().join("ready");
+        std::fs::write(&entry, STALLED_TRANSCRIPTION).unwrap();
+        if reply_first {
+            std::fs::write(directory.path().join("reply-first"), []).unwrap();
+        }
+        let (sender, receiver) = tokio::sync::watch::channel(false);
+        let interpreter = python();
+        let session = videosift_core::worker::mock_transcribe_cancellable(
+            &interpreter,
+            &entry,
+            "task",
+            "en",
+            receiver,
+        );
+        let request_cancel = async {
+            while !ready.exists() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            sender.send(true).unwrap();
+        };
+        let (result, ()) = tokio::time::timeout(Duration::from_secs(10), async {
+            tokio::join!(session, request_cancel)
+        })
+        .await
+        .expect("worker must reach the cancellation gate and be reaped");
+        assert!(
+            matches!(result, Err(HandshakeError::Cancelled)),
+            "{result:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn transcription_response_timeout_reaps_stalled_worker() {
+    let directory = tempfile::tempdir().unwrap();
+    let entry = directory.path().join("mock.py");
+    let ready = directory.path().join("ready");
+    std::fs::write(&entry, STALLED_TRANSCRIPTION).unwrap();
+    let start = Instant::now();
+    let result = videosift_core::worker::mock_transcribe(&python(), &entry, "task", "en").await;
+    assert!(
+        ready.exists(),
+        "worker must have read the transcription request"
+    );
+    assert!(matches!(result, Err(HandshakeError::Timeout)), "{result:?}");
+    assert!((Duration::from_secs(3)..Duration::from_secs(9)).contains(&start.elapsed()));
+}

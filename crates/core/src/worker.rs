@@ -5,6 +5,7 @@ use std::sync::LazyLock;
 use std::time::Duration;
 
 use serde_json::{Value, json};
+use tokio::sync::watch;
 use tokio::time::{Instant, timeout_at};
 
 use crate::process::{Limits, ProcessError, ProcessSpec, ProcessSupervisor, Stream, Termination};
@@ -14,7 +15,9 @@ use crate::scheduler::Execution;
 pub enum HandshakeError {
     #[error(transparent)]
     Process(#[from] ProcessError),
-    #[error("worker handshake timed out")]
+    #[error("worker session cancelled")]
+    Cancelled,
+    #[error("worker response timed out")]
     Timeout,
     #[error("incompatible worker protocol")]
     VersionMismatch,
@@ -30,7 +33,7 @@ pub enum HandshakeError {
 
 /// Probe a trusted isolated Python environment and Worker entry point, then reap the process.
 pub async fn probe_worker(python: &Path, entry: &Path) -> Result<(), HandshakeError> {
-    session(python, entry, None).await.map(|_| ())
+    session(python, entry, None, None).await.map(|_| ())
 }
 
 /// Run one synthetic transcription against the virtual audio/mock.bin artifact.
@@ -39,6 +42,28 @@ pub async fn mock_transcribe(
     entry: &Path,
     task_id: &str,
     language: &str,
+) -> Result<Value, HandshakeError> {
+    mock_transcribe_inner(python, entry, task_id, language, None).await
+}
+
+/// Request cancellation by publishing true and keeping it set until this call returns.
+/// A pre-existing request prevents dispatch. Dropping the sender alone does not cancel.
+pub async fn mock_transcribe_cancellable(
+    python: &Path,
+    entry: &Path,
+    task_id: &str,
+    language: &str,
+    cancellation: watch::Receiver<bool>,
+) -> Result<Value, HandshakeError> {
+    mock_transcribe_inner(python, entry, task_id, language, Some(cancellation)).await
+}
+
+async fn mock_transcribe_inner(
+    python: &Path,
+    entry: &Path,
+    task_id: &str,
+    language: &str,
+    cancellation: Option<watch::Receiver<bool>>,
 ) -> Result<Value, HandshakeError> {
     if task_id.is_empty()
         || task_id.len() > 128
@@ -49,7 +74,7 @@ pub async fn mock_transcribe(
     {
         return Err(HandshakeError::InvalidParams);
     }
-    session(python, entry, Some((task_id, language)))
+    session(python, entry, Some((task_id, language)), cancellation)
         .await?
         .ok_or(HandshakeError::InvalidResponse)
 }
@@ -58,9 +83,13 @@ async fn session(
     python: &Path,
     entry: &Path,
     transcription: Option<(&str, &str)>,
+    mut cancellation: Option<watch::Receiver<bool>>,
 ) -> Result<Option<Value>, HandshakeError> {
     if !entry.is_absolute() {
         return Err(ProcessError::InvalidProgram.into());
+    }
+    if cancellation.as_ref().is_some_and(|signal| *signal.borrow()) {
+        return Err(HandshakeError::Cancelled);
     }
     let mut supervisor = ProcessSupervisor::new(1, 1)?;
     let task = supervisor.submit()?;
@@ -83,15 +112,55 @@ async fn session(
             },
         )?
         .ok_or(ProcessError::NotManaged)?;
+    let result = tokio::select! {
+        biased;
+        () = cancelled(&mut cancellation) => Err(HandshakeError::Cancelled),
+        result = exchange_and_drain(&mut supervisor, execution, deadline, transcription) => result,
+    };
+    let (report, transcript) = match result {
+        Err(error) => {
+            supervisor.cancel(task)?;
+            supervisor.settle(execution).await?;
+            return Err(error);
+        }
+        Ok(transcript) => {
+            let report = tokio::select! {
+                biased;
+                () = cancelled(&mut cancellation) => {
+                    supervisor.cancel(task)?;
+                    supervisor.settle(execution).await?;
+                    return Err(HandshakeError::Cancelled);
+                }
+                report = supervisor.settle(execution) => report?,
+            };
+            (report, transcript)
+        }
+    };
+    if report.pipe_failed || report.termination != (Termination::Exited { success: true }) {
+        return Err(HandshakeError::UnexpectedExit);
+    }
+    Ok(transcript)
+}
+
+async fn cancelled(signal: &mut Option<watch::Receiver<bool>>) {
+    if let Some(signal) = signal
+        && signal.wait_for(|requested| *requested).await.is_ok()
+    {
+        return;
+    }
+    std::future::pending().await
+}
+
+async fn exchange_and_drain(
+    supervisor: &mut ProcessSupervisor,
+    execution: Execution,
+    deadline: Instant,
+    transcription: Option<(&str, &str)>,
+) -> Result<Option<Value>, HandshakeError> {
     let mut frames = Frames::default();
     let mut result = match timeout_at(
         deadline,
-        exchange(
-            &mut supervisor,
-            execution,
-            &mut frames,
-            transcription.is_some(),
-        ),
+        exchange(supervisor, execution, &mut frames, transcription.is_some()),
     )
     .await
     {
@@ -102,29 +171,24 @@ async fn session(
     if result.is_ok()
         && let Some((task_id, language)) = transcription
     {
+        let response_deadline = Instant::now() + Duration::from_secs(3);
         result = match timeout_at(
-            Instant::now() + Duration::from_secs(3),
-            transcribe(&mut supervisor, execution, &mut frames, task_id, language),
+            response_deadline,
+            transcribe(supervisor, execution, &mut frames, task_id, language),
         )
         .await
         {
-            Ok(reply) => reply.map(|value| transcript = Some(value)),
-            Err(_) => Err(HandshakeError::Timeout),
+            Ok(reply) if Instant::now() < response_deadline => {
+                reply.map(|value| transcript = Some(value))
+            }
+            _ => Err(HandshakeError::Timeout),
         };
     }
     if result.is_ok() {
         supervisor.close_input(execution)?;
-        result = frames.drain(&mut supervisor, execution).await;
+        result = frames.drain(supervisor, execution).await;
     }
-    if result.is_err() {
-        supervisor.cancel(task)?;
-    }
-    let report = supervisor.settle(execution).await?;
-    result?;
-    if report.pipe_failed || report.termination != (Termination::Exited { success: true }) {
-        return Err(HandshakeError::UnexpectedExit);
-    }
-    Ok(transcript)
+    result.map(|()| transcript)
 }
 
 #[derive(Default)]
